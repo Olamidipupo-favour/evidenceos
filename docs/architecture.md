@@ -26,8 +26,9 @@ tools rather than through a side-channel chatbot.
 ┌─────────────────────────────┐     ┌───────────────────────────────┐
 │  Browser tab                │     │  backend (FastAPI)            │
 │                             │     │                               │
-│  Next.js UI  ── fetch ────▶│────▶│  /health, /reviews, /papers   │
-│  (humans)                  │     │  └─ PubMed/NCBI API ────────▶│ NCBI
+│  Next.js UI  ── fetch ────▶│────▶│  /health, /reviews, /papers,   │
+│  (humans)                  │     │  /api/search, /api/papers/{pmid}│
+│                             │     │  └─ PubMed/NCBI API ────────▶│ NCBI
 │                             │     │  └─ PostgreSQL ─────────────▶│ DB
 │  WebMCP tools               │     │     (SQLAlchemy + Alembic)   │
 │  ─ registered via           │     └───────────────────────────────┘

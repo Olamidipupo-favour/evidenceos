@@ -28,7 +28,7 @@ class TestPaperModel:
             pmid=38657777,
             title="A landmark trial",
             abstract="Abstract text",
-            authors="Doe J, Smith A",
+            authors=["Doe J", "Smith A"],
             journal="New England Journal of Medicine",
             publication_date=date(2024, 5, 1),
             doi="10.1056/NEJMoa2400000",

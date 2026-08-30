@@ -15,7 +15,7 @@ artifacts via structured browser tools.
 | Frontend | Next.js · TypeScript · React · Tailwind CSS · shadcn/ui   |
 | Backend  | FastAPI · SQLAlchemy 2.x · Alembic · Python 3.14          |
 | Data     | PostgreSQL                                                |
-| Sources  | PubMed / NCBI E-utilities (planned)                       |
+| Sources  | PubMed / NCBI E-utilities (esearch/efetch)                |
 | Agents   | WebMCP (`document.modelContext`) via `@evidenceos/webmcp` |
 
 ## Repo layout

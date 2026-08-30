@@ -7,7 +7,7 @@ from datetime import date
 from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, Date, Index, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -30,7 +30,7 @@ class Paper(Base):
     pmid: Mapped[int] = mapped_column(BigInteger, nullable=False)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     abstract: Mapped[str | None] = mapped_column(Text)
-    authors: Mapped[str | None] = mapped_column(Text)
+    authors: Mapped[list[str] | None] = mapped_column(JSONB)
     journal: Mapped[str | None] = mapped_column(String(300))
     publication_date: Mapped[date | None] = mapped_column(Date)
     doi: Mapped[str | None] = mapped_column(String(200))

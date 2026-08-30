@@ -12,7 +12,7 @@ class PaperCreate(BaseModel):
     pmid: int = Field(gt=0)
     title: str = Field(min_length=1, max_length=500)
     abstract: str | None = None
-    authors: str | None = None
+    authors: list[str] | None = None
     journal: str | None = None
     publication_date: date | None = None
     doi: str | None = Field(default=None, max_length=200)

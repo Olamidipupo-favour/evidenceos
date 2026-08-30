@@ -23,6 +23,12 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://evidenceos:evidenceos@localhost:5432/evidenceos"
 
+    # PubMed/NCBI E-utilities. An email is required by NCBI policy; an API key
+    # raises the permitted request rate (10 rps instead of 3 rps).
+    ncbi_base_url: str = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+    pubmed_email: str | None = None
+    pubmed_api_key: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:
