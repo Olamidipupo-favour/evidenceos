@@ -2,6 +2,7 @@
 
 export type ScreeningStatus = "pending" | "screened" | "included" | "excluded";
 export type Confidence = "low" | "medium" | "high";
+export type ExtractionOrigin = "manual" | "llm";
 
 export type ReviewStatus = ScreeningStatus;
 
@@ -36,6 +37,8 @@ export interface EvidenceExtraction {
   key_finding: string | null;
   limitations: string | null;
   confidence: Confidence | null;
+  origin: ExtractionOrigin;
+  model_name: string | null;
   created_at: string;
 }
 

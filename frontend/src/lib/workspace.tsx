@@ -14,6 +14,7 @@ import {
 import { api } from "@/lib/api";
 import type {
   ActivityEntry,
+  EvidenceExtraction,
   ExtractionInput,
   LiteraturePaper,
   Review,
@@ -67,6 +68,11 @@ interface WorkspaceState {
   searchLoading: boolean;
   searchError: string | null;
   detailPaper: LiteraturePaper | null;
+  paperEvidence: EvidenceExtraction[];
+  paperEvidenceLoading: boolean;
+  paperEvidenceError: string | null;
+  extracting: boolean;
+  extractionError: string | null;
   activity: ActivityEntry[];
   reach: WorkflowStage;
   createReview: (title: string, researchQuestion: string | null) => Promise<boolean>;
@@ -80,6 +86,7 @@ interface WorkspaceState {
   setScreening: (paperId: string, status: ScreeningStatus) => Promise<void>;
   setNotes: (paperId: string, notes: string) => Promise<void>;
   addExtraction: (paperId: string, input: ExtractionInput) => Promise<void>;
+  runExtraction: () => Promise<void>;
   openPaper: (paper: LiteraturePaper) => void;
   closePaper: () => void;
   refreshMatrix: () => Promise<void>;
@@ -125,9 +132,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [searchError, setSearchError] = useState<string | null>(null);
 
   const [detailPaper, setDetailPaper] = useState<LiteraturePaper | null>(null);
+  const [evidenceRecord, setEvidenceRecord] = useState<{
+    pmid: number;
+    rows: EvidenceExtraction[];
+  } | null>(null);
+  const [paperEvidenceLoading, setPaperEvidenceLoading] = useState(false);
+  const [paperEvidenceError, setPaperEvidenceError] = useState<string | null>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extractionError, setExtractionError] = useState<string | null>(null);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
 
   const activeReviewIdRef = useRef<string | null>(null);
+  const detailPaperRef = useRef<LiteraturePaper | null>(null);
   const persisted = storageGet(ACTIVE_REVIEW_KEY);
 
   useEffect(() => {
@@ -156,6 +172,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const id = activeReviewIdRef.current;
     if (id) await loadMatrix(id);
   }, [loadMatrix]);
+
+  const loadPaperEvidence = useCallback(async (pmid: number) => {
+    setPaperEvidenceLoading(true);
+    setPaperEvidenceError(null);
+    try {
+      const data = await api.getEvidence(pmid);
+      setEvidenceRecord({ pmid, rows: data });
+    } catch {
+      setEvidenceRecord(null);
+      setPaperEvidenceError("Could not load evidence for this paper.");
+    } finally {
+      setPaperEvidenceLoading(false);
+    }
+  }, []);
 
   // Boot: check API health, load reviews, restore the active review.
   useEffect(() => {
@@ -235,6 +265,37 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [activeReviewId]);
+
+  // Load the paper's evidence whenever the detail drawer opens.
+  useEffect(() => {
+    detailPaperRef.current = detailPaper;
+    if (!detailPaper) return;
+    const pmid = detailPaper.pmid;
+    let cancelled = false;
+
+    const load = async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setPaperEvidenceLoading(true);
+      setPaperEvidenceError(null);
+      try {
+        const data = await api.getEvidence(pmid);
+        if (!cancelled) setEvidenceRecord({ pmid, rows: data });
+      } catch {
+        if (!cancelled) {
+          setEvidenceRecord(null);
+          setPaperEvidenceError("Could not load evidence for this paper.");
+        }
+      } finally {
+        if (!cancelled) setPaperEvidenceLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [detailPaper]);
 
   const createReview = useCallback(
     async (title: string, researchQuestion: string | null) => {
@@ -506,9 +567,35 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         });
         await loadMatrix(id);
       }
+      const open = detailPaperRef.current;
+      if (open) await loadPaperEvidence(open.pmid);
     },
-    [pushActivity, loadMatrix],
+    [pushActivity, loadMatrix, loadPaperEvidence],
   );
+
+  const runExtraction = useCallback(async () => {
+    const paper = detailPaperRef.current;
+    if (!paper || extracting) return;
+    setExtracting(true);
+    setExtractionError(null);
+    try {
+      const generated = await api.extractEvidence(paper.pmid);
+      pushActivity({
+        kind: "evidence",
+        message: `LLM generated structured evidence from "${truncateTitle(paper.title)}" (${generated.model_name ?? "LLM"}). Verify against the source before relying on it.`,
+        tone: "accent",
+      });
+      await loadPaperEvidence(paper.pmid);
+      const reviewId = activeReviewIdRef.current;
+      if (reviewId) await loadMatrix(reviewId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not extract evidence.";
+      setExtractionError(message);
+      pushActivity({ kind: "evidence", message, tone: "warning" });
+    } finally {
+      setExtracting(false);
+    }
+  }, [pushActivity, loadMatrix, loadPaperEvidence, extracting]);
 
   const openPaper = useCallback((paper: LiteraturePaper) => setDetailPaper(paper), []);
   const closePaper = useCallback(() => setDetailPaper(null), []);
@@ -516,6 +603,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const activeReview = useMemo(
     () => reviews.find((r) => r.id === activeReviewId) ?? null,
     [reviews, activeReviewId],
+  );
+
+  // Only surface evidence that belongs to the paper currently in the drawer,
+  // so switching papers never flashes the previous paper's rows.
+  const paperEvidence = useMemo(
+    () =>
+      evidenceRecord && detailPaper && evidenceRecord.pmid === detailPaper.pmid
+        ? evidenceRecord.rows
+        : [],
+    [evidenceRecord, detailPaper],
   );
 
   const reach = stageFor(matrix, searchResults.length);
@@ -536,6 +633,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     searchLoading,
     searchError,
     detailPaper,
+    paperEvidence,
+    paperEvidenceLoading,
+    paperEvidenceError,
+    extracting,
+    extractionError,
     activity,
     reach,
     createReview,
@@ -549,6 +651,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setScreening,
     setNotes,
     addExtraction,
+    runExtraction,
     openPaper,
     closePaper,
     refreshMatrix,

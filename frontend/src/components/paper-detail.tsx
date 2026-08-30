@@ -2,16 +2,24 @@
 
 import { useState, type FormEvent } from "react";
 
-import { ArrowUpRight, FlaskConical, Plus, StickyNote } from "lucide-react";
+import { ArrowUpRight, FlaskConical, Plus, Sparkles, StickyNote } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardSection } from "@/components/ui/card";
 import { Drawer } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfidenceBadge, SCREENING_LABELS, StatusBadge } from "@/components/status-badge";
-import type { Confidence, LiteraturePaper, MatrixPaper, ScreeningStatus } from "@/lib/types";
+import type {
+  Confidence,
+  EvidenceExtraction,
+  LiteraturePaper,
+  MatrixPaper,
+  ScreeningStatus,
+} from "@/lib/types";
 import { formatDate } from "@/lib/format";
 import { useWorkspace } from "@/lib/workspace";
 import { cn } from "@/lib/utils";
@@ -93,15 +101,78 @@ function NotesCard({ matrixPaper }: { matrixPaper: MatrixPaper }) {
   );
 }
 
-function EvidenceCard({ matrixPaper }: { matrixPaper: MatrixPaper }) {
-  const { addExtraction } = useWorkspace();
+function Field({ label, value }: { label: string; value: string | number | null }) {
+  const empty = value === null || value === "";
+  return (
+    <>
+      <span className="font-medium text-muted-foreground">{label}</span>
+      <span
+        className={cn(
+          "min-w-0 leading-snug text-muted-foreground",
+          empty && "italic text-muted-foreground/60",
+        )}
+      >
+        {empty ? "Not reported" : value}
+      </span>
+    </>
+  );
+}
+
+function EvidenceRow({ extraction }: { extraction: EvidenceExtraction }) {
+  const generated = extraction.origin === "llm";
+  return (
+    <div data-slot="evidence-row" className="space-y-2 rounded-lg border border-border/60 p-3">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        {generated ? <Badge variant="signal">Generated</Badge> : <Badge>Reported</Badge>}
+        <span className="text-[0.6875rem] text-muted-foreground">
+          {generated
+            ? `LLM interpretation${extraction.model_name ? ` via ${extraction.model_name}` : ""} — verify against the source`
+            : "Recorded by the researcher"}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[0.75rem]">
+        <Field label="Population" value={extraction.population} />
+        <Field label="Intervention" value={extraction.intervention} />
+        <Field label="Comparison" value={extraction.comparison} />
+        <Field label="Outcome" value={extraction.outcome} />
+        <Field label="Study design" value={extraction.study_design} />
+        <Field label="Sample size" value={extraction.sample_size} />
+      </div>
+
+      {extraction.key_finding ? (
+        <p className="border-t border-border/40 pt-2 text-[0.8125rem] leading-relaxed text-foreground/90">
+          {extraction.key_finding}
+        </p>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-2 pt-0.5 text-[0.6875rem] text-muted-foreground">
+        {extraction.confidence ? <ConfidenceBadge confidence={extraction.confidence} /> : null}
+        {extraction.sample_size ? <span>n = {extraction.sample_size}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function EvidenceCard({ matrixPaper }: { matrixPaper: MatrixPaper | null }) {
+  const {
+    paperEvidence,
+    paperEvidenceLoading,
+    paperEvidenceError,
+    extracting,
+    extractionError,
+    runExtraction,
+    addExtraction,
+  } = useWorkspace();
   const [open, setOpen] = useState(false);
+
+  const busy = extracting || paperEvidenceLoading;
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
     const read = (name: string) => (form[name] as HTMLInputElement | null)?.value.trim() || null;
-    void addExtraction(matrixPaper.id, {
+    void addExtraction(matrixPaper!.id, {
       population: read("population"),
       intervention: read("intervention"),
       outcome: read("outcome"),
@@ -122,135 +193,139 @@ function EvidenceCard({ matrixPaper }: { matrixPaper: MatrixPaper }) {
             <h4 className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
               Evidence
             </h4>
+            {paperEvidence.length > 0 ? <Badge variant="soft">{paperEvidence.length}</Badge> : null}
           </div>
-          {matrixPaper.extractions.length > 0 ? (
-            <Badge variant="soft">{matrixPaper.extractions.length}</Badge>
-          ) : null}
+          <Button
+            variant="soft"
+            size="sm"
+            onClick={() => void runExtraction()}
+            disabled={busy}
+            title="Generate structured evidence from this paper's title and abstract"
+          >
+            {extracting ? (
+              <Spinner className="size-3.5 animate-spin" aria-hidden="true" />
+            ) : (
+              <Sparkles className="size-3.5" aria-hidden="true" />
+            )}
+            {extracting ? "Extracting…" : "Extract"}
+          </Button>
         </div>
 
-        {matrixPaper.extractions.length === 0 ? (
-          <p className="text-[0.8125rem] text-muted-foreground">
-            No extractions yet. Record structured findings below to populate the synthesis matrix.
+        {extractionError ? (
+          <p className="text-[0.8125rem] leading-relaxed text-status-excluded">{extractionError}</p>
+        ) : null}
+
+        {paperEvidenceLoading && paperEvidence.length === 0 ? (
+          <div className="space-y-3">
+            {Array.from({ length: 2 }).map((_, index) => (
+              <Skeleton key={index} className="h-24 w-full" />
+            ))}
+          </div>
+        ) : paperEvidenceError && paperEvidence.length === 0 ? (
+          <p className="text-[0.8125rem] text-muted-foreground">{paperEvidenceError}</p>
+        ) : paperEvidence.length === 0 ? (
+          <p className="text-[0.8125rem] leading-relaxed text-muted-foreground">
+            No structured evidence yet. Extract it from the title and abstract — the assistant only
+            structures what the paper reports and never fabricates findings.
           </p>
         ) : (
           <div className="space-y-3">
-            {matrixPaper.extractions.map((extraction) => (
-              <div
-                key={extraction.id}
-                className="space-y-1.5 rounded-lg border border-border/60 p-3"
-              >
-                <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[0.75rem]">
-                  <span className="font-medium text-muted-foreground">Population</span>
-                  <span className="text-muted-foreground">{extraction.population ?? "—"}</span>
-                  <span className="font-medium text-muted-foreground">Intervention</span>
-                  <span className="text-muted-foreground">{extraction.intervention ?? "—"}</span>
-                  <span className="font-medium text-muted-foreground">Outcome</span>
-                  <span className="text-muted-foreground">{extraction.outcome ?? "—"}</span>
-                </div>
-                {extraction.key_finding ? (
-                  <p className="border-t border-border/40 pt-1.5 text-[0.8125rem] leading-relaxed text-foreground/90">
-                    {extraction.key_finding}
-                  </p>
-                ) : null}
-                <div className="flex flex-wrap items-center gap-2 pt-0.5 text-[0.6875rem] text-muted-foreground">
-                  {extraction.confidence ? (
-                    <ConfidenceBadge confidence={extraction.confidence} />
-                  ) : null}
-                  {extraction.sample_size ? <span>n = {extraction.sample_size}</span> : null}
-                </div>
-              </div>
+            {paperEvidence.map((extraction) => (
+              <EvidenceRow key={extraction.id} extraction={extraction} />
             ))}
           </div>
         )}
 
-        {open ? (
-          <form onSubmit={submit} className="space-y-3 rounded-lg border border-border/60 p-3">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <label
-                  className="text-[0.6875rem] font-medium text-muted-foreground"
-                  htmlFor="f-pop"
-                >
-                  Population
-                </label>
-                <Input id="f-pop" name="population" placeholder="Adults with T2D, n=…" />
+        {matrixPaper ? (
+          open ? (
+            <form onSubmit={submit} className="space-y-3 rounded-lg border border-border/60 p-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <label
+                    className="text-[0.6875rem] font-medium text-muted-foreground"
+                    htmlFor="f-pop"
+                  >
+                    Population
+                  </label>
+                  <Input id="f-pop" name="population" placeholder="Adults with T2D, n=…" />
+                </div>
+                <div className="space-y-1">
+                  <label
+                    className="text-[0.6875rem] font-medium text-muted-foreground"
+                    htmlFor="f-int"
+                  >
+                    Intervention
+                  </label>
+                  <Input id="f-int" name="intervention" placeholder="Dapagliflozin 10 mg" />
+                </div>
+                <div className="space-y-1">
+                  <label
+                    className="text-[0.6875rem] font-medium text-muted-foreground"
+                    htmlFor="f-out"
+                  >
+                    Outcome
+                  </label>
+                  <Input id="f-out" name="outcome" placeholder="3-point MACE" />
+                </div>
+                <div className="space-y-1">
+                  <label
+                    className="text-[0.6875rem] font-medium text-muted-foreground"
+                    htmlFor="f-samp"
+                  >
+                    Sample size
+                  </label>
+                  <Input id="f-samp" name="sample_size" type="number" min={0} placeholder="4744" />
+                </div>
               </div>
               <div className="space-y-1">
                 <label
                   className="text-[0.6875rem] font-medium text-muted-foreground"
-                  htmlFor="f-int"
+                  htmlFor="f-find"
                 >
-                  Intervention
+                  Key finding
                 </label>
-                <Input id="f-int" name="intervention" placeholder="Dapagliflozin 10 mg" />
+                <Textarea
+                  id="f-find"
+                  name="key_finding"
+                  rows={3}
+                  placeholder="HR 0.86 (95% CI 0.73–1.00) for MACE with dapagliflozin vs placebo."
+                />
               </div>
               <div className="space-y-1">
                 <label
                   className="text-[0.6875rem] font-medium text-muted-foreground"
-                  htmlFor="f-out"
+                  htmlFor="f-conf"
                 >
-                  Outcome
+                  Confidence
                 </label>
-                <Input id="f-out" name="outcome" placeholder="3-point MACE" />
-              </div>
-              <div className="space-y-1">
-                <label
-                  className="text-[0.6875rem] font-medium text-muted-foreground"
-                  htmlFor="f-samp"
+                <select
+                  id="f-conf"
+                  name="confidence"
+                  defaultValue="medium"
+                  className="h-9 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
                 >
-                  Sample size
-                </label>
-                <Input id="f-samp" name="sample_size" type="number" min={0} placeholder="4744" />
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
               </div>
-            </div>
-            <div className="space-y-1">
-              <label
-                className="text-[0.6875rem] font-medium text-muted-foreground"
-                htmlFor="f-find"
-              >
-                Key finding
-              </label>
-              <Textarea
-                id="f-find"
-                name="key_finding"
-                rows={3}
-                placeholder="HR 0.86 (95% CI 0.73–1.00) for MACE with dapagliflozin vs placebo."
-              />
-            </div>
-            <div className="space-y-1">
-              <label
-                className="text-[0.6875rem] font-medium text-muted-foreground"
-                htmlFor="f-conf"
-              >
-                Confidence
-              </label>
-              <select
-                id="f-conf"
-                name="confidence"
-                defaultValue="medium"
-                className="h-9 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" size="sm">
-                <FlaskConical className="size-3.5" aria-hidden="true" />
-                Record finding
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <Button variant="soft" size="sm" onClick={() => setOpen(true)}>
-            <Plus className="size-3.5" aria-hidden="true" />
-            Add extraction
-          </Button>
-        )}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm">
+                  <FlaskConical className="size-3.5" aria-hidden="true" />
+                  Record finding
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <Button variant="soft" size="sm" onClick={() => setOpen(true)}>
+              <Plus className="size-3.5" aria-hidden="true" />
+              Add extraction
+            </Button>
+          )
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -304,9 +379,10 @@ function DetailBody({
         <>
           <ScreeningCard matrixPaper={matrixPaper} />
           <NotesCard matrixPaper={matrixPaper} />
-          <EvidenceCard matrixPaper={matrixPaper} />
         </>
       )}
+
+      <EvidenceCard matrixPaper={matrixPaper} />
 
       <section className="space-y-2 border-t border-border/60 pt-4">
         <h4 className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">

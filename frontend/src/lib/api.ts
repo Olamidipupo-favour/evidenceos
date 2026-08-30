@@ -141,4 +141,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+  extractEvidence: (reference: string | number) =>
+    request<EvidenceExtraction>(`/api/papers/${reference}/extract`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  getEvidence: (reference: string | number) =>
+    request<EvidenceExtraction[]>(`/api/papers/${reference}/evidence`),
 };
