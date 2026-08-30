@@ -1,0 +1,109 @@
+# EvidenceOS
+
+**Agent-native medical research workspace.** Search biomedical literature,
+screen papers, and assemble structured evidence reviews — side by side with AI
+agents that operate the _live application_ through WebMCP-registered tools
+(not a bolted-on chatbot).
+
+Built for the **WebMCP Challenge**. Human-first UI; agents work the same
+artifacts via structured browser tools.
+
+## Stack
+
+| Layer    | Tech                                                      |
+| -------- | --------------------------------------------------------- |
+| Frontend | Next.js · TypeScript · React · Tailwind CSS · shadcn/ui   |
+| Backend  | FastAPI · Python 3.14 (uv-managed venv)                   |
+| Data     | PostgreSQL (planned)                                      |
+| Sources  | PubMed / NCBI E-utilities (planned)                       |
+| Agents   | WebMCP (`document.modelContext`) via `@evidenceos/webmcp` |
+
+## Repo layout
+
+```
+├── frontend/   Next.js app (UI) — port 3000
+├── backend/    FastAPI service — port 8000
+├── webmcp/     WebMCP tool contract types + JSON Schemas
+├── database/   PostgreSQL schema/migration plan
+├── docs/       architecture.md · webmcp.md
+└── scripts/    setup.sh · dev.sh
+```
+
+## Prerequisites
+
+- **Node.js ≥ 20** and npm
+- **uv** (Python package/venv manager) — https://docs.astral.sh/uv
+- Python 3.14 (or the 3.x of your choice via `backend/.python-version`)
+
+## Quickstart
+
+```sh
+# 1. Install everything
+./scripts/setup.sh
+
+# 2. Copy environment examples (edit as needed)
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env.local
+
+# 3. Run frontend + backend together
+npm run dev
+```
+
+Verify:
+
+```sh
+curl http://localhost:8000/health   # → {"status":"ok"}
+open http://localhost:3000          # frontend UI
+```
+
+Run a single side:
+
+```sh
+npm run dev:backend   # FastAPI on :8000 (uvicorn --reload)
+npm run dev:frontend  # Next.js on :3000
+```
+
+## Environment variables
+
+| Var                   | Where                 | Default                     | Purpose                           |
+| --------------------- | --------------------- | --------------------------- | --------------------------------- |
+| `APP_NAME`            | `backend/.env`        | `EvidenceOS API`            | API display name                  |
+| `APP_ENV`             | `backend/.env`        | `development`               | Runtime environment               |
+| `CORS_ORIGINS`        | `backend/.env`        | `["http://localhost:3000"]` | JSON list of allowed origins      |
+| `NEXT_PUBLIC_API_URL` | `frontend/.env.local` | `http://localhost:8000`     | Backend base URL for the frontend |
+
+Placeholder config for the upcoming pieces (`DATABASE_URL`, PUBMED ids) is
+documented in the examples. **Never commit real secrets — `.env*` files are
+git-ignored.**
+
+## Commands
+
+From the repo root:
+
+```sh
+npm run lint          # ESLint (frontend) + ruff (backend)
+npm run typecheck     # tsc for frontend + webmcp
+npm run format        # Prettier + ruff format
+npm run format:check  # verify formatting
+npm run test          # vitest (frontend) + pytest (backend)
+npm run build         # next build + webmcp build
+```
+
+Equivalents inside each app: `backend/Makefile` (`make lint test dev`),
+`frontend/package.json`, `webmcp/package.json`.
+
+## WebMCP
+
+See [docs/webmcp.md](docs/webmcp.md) for the strategy and
+[webmcp/schemas](webmcp/schemas) for tool contracts. Key rules:
+
+- Agents use registered tools (`search_literature`, `create_review`,
+  `build_evidence_matrix`, …); `execute` handlers reuse the same logic the UI
+  calls.
+- Read-only tools may autosubmit; anything mutating requires human
+  confirmation.
+- Progressive enhancement: no WebMCP browser support → plain human UI.
+
+## License
+
+[MIT](LICENSE)

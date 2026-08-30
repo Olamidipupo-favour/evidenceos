@@ -1,0 +1,22 @@
+{
+  "name": "evidenceos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EvidenceOS — agent-native medical research workspace monorepo.",
+  "scripts": {
+    "setup": "bash scripts/setup.sh",
+    "dev": "concurrently -n api,web -c blue,magenta \"make -C backend dev\" \"npm --prefix frontend run dev\"",
+    "dev:backend": "make -C backend dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "lint": "npm --prefix frontend run lint && make -C backend lint",
+    "typecheck": "cd frontend && npx tsc --noEmit && cd ../webmcp && npm run typecheck",
+    "format": "prettier --write \"frontend/**/*.{ts,tsx,css,json,md}\" \"webmcp/**/*.{ts,tsx,json,md}\" \"*.md\" && make -C backend format",
+    "format:check": "prettier --check \"frontend/**/*.{ts,tsx,css,json,md}\" \"webmcp/**/*.{ts,tsx,json,md}\" \"*.md\" && make -C backend format-check",
+    "test": "npm --prefix frontend test && make -C backend test",
+    "build": "npm --prefix frontend run build && npm --prefix webmcp run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "prettier": "^3.5.3"
+  }
+}

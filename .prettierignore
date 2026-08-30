@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+*.md
+!README.md
+!frontend/**/README.md
+!backend/README.md
+!webmcp/README.md
+!webmcp/**/README.md
+!database/**/README.md
+!docs/**/*.md

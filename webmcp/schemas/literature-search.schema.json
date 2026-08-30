@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evidenceos/literature-search",
+  "title": "search_literature",
+  "description": "Search the biomedical literature (PubMed) for papers matching a clinical question. Use when the user or agent needs to find, screen, or collect primary studies.",
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Free-text or PubMed-style search query (e.g. a PICO question)."
+    },
+    "max_results": {
+      "type": "integer",
+      "description": "Maximum number of results to return. Defaults to 10.",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "sort": {
+      "type": "string",
+      "enum": ["relevance", "date_newest"],
+      "description": "Result ordering. Defaults to relevance.",
+      "default": "relevance"
+    },
+    "date_range": {
+      "type": "object",
+      "description": "Optional publication date filter.",
+      "properties": {
+        "from": { "type": "string", "format": "date" },
+        "to": { "type": "string", "format": "date" }
+      }
+    }
+  },
+  "required": ["query"],
+  "additionalProperties": false
+}
