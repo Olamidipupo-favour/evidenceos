@@ -33,12 +33,17 @@ reachable PostgreSQL database).
 GET    /health
 GET    /api/search?q=&page=&page_size=       # PubMed search (results cached)
 GET    /api/papers/{pmid}                    # PubMed lookup by PMID (cached)
-GET    /reviews                              # list reviews
-POST   /reviews                              # create a review
-GET    /reviews/{id}                         # fetch a review
-GET    /reviews/{id}/papers                  # list papers attached to a review
-POST   /reviews/{id}/papers                  # attach a paper (with screening status)
-GET    /papers                               # list papers
+GET    /api/reviews                          # list reviews
+POST   /api/reviews                          # create a review (title, research question)
+GET    /api/reviews/{id}                     # fetch a review
+PATCH  /api/reviews/{id}                     # update title / research question
+DELETE /api/reviews/{id}                     # delete a review (cascades links)
+GET    /api/reviews/{id}/papers              # list screening links
+POST   /api/reviews/{id}/papers              # attach a paper by PMID (fetched from PubMed if new)
+PATCH  /api/reviews/{id}/papers/{paper_id}   # update link status / notes
+DELETE /api/reviews/{id}/papers/{paper_id}   # remove a paper from a review
+GET    /api/reviews/{id}/matrix              # evidence matrix: papers + screening state + extractions
+GET    /papers                               # list papers (UUID-based record API)
 POST   /papers                               # create a paper (pmid unique)
 GET    /papers/{id}                          # fetch a paper
 GET    /papers/{id}/evidence-extractions     # list a paper's extractions
@@ -54,6 +59,11 @@ Literature API behavior:
 - `GET /api/papers/{pmid}` serves the cached normalized paper when present,
   otherwise fetches it from PubMed. Invalid PMIDs return `422`; PMIDs absent from
   PubMed return `404`.
+- Review workspace: papers are attached to reviews by PMID
+  (`POST /api/reviews/{id}/papers`) and fetched from PubMed on first use;
+  screening status and notes live on the link and are updated via PATCH. The
+  evidence matrix (`GET /api/reviews/{id}/matrix`) returns each paper with its
+  screening state plus all recorded evidence extractions.
 - External failures map to useful errors: rate limiting → `429`, network/HTTP
   errors → `502`, malformed NCBI payloads → `502`.
 - NCBI E-utilities require an e-mail; set `PUBMED_EMAIL` (and optionally

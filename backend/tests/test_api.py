@@ -5,7 +5,7 @@ import uuid
 
 def _create_review(client, title="Review title", research_question=None):
     return client.post(
-        "/reviews",
+        "/api/reviews",
         json={"title": title, "research_question": research_question},
     )
 
@@ -35,7 +35,7 @@ class TestReviews:
         assert "title" in response.text
 
     def test_review_not_found(self, client) -> None:
-        response = client.get(f"/reviews/{uuid.uuid4()}")
+        response = client.get(f"/api/reviews/{uuid.uuid4()}")
         assert response.status_code == 404
         assert response.json()["detail"] == "Review not found"
 
@@ -73,57 +73,47 @@ class TestPapers:
 class TestReviewPaperLink:
     def test_attach_paper_to_review_and_list(self, client) -> None:
         review = _create_review(client).json()
-        paper = _create_paper(client).json()
+        paper = _create_paper(client, pmid=1000).json()
 
         response = client.post(
-            f"/reviews/{review['id']}/papers",
-            json={"paper_id": paper["id"], "status": "included", "notes": "kept"},
+            f"/api/reviews/{review['id']}/papers",
+            json={"pmid": paper["pmid"], "status": "included", "notes": "kept"},
         )
         assert response.status_code == 201
         body = response.json()
         assert body["status"] == "included"
         assert body["paper_id"] == paper["id"]
 
-        listed = client.get(f"/reviews/{review['id']}/papers")
+        listed = client.get(f"/api/reviews/{review['id']}/papers")
         assert listed.status_code == 200
         assert [row["paper_id"] for row in listed.json()] == [paper["id"]]
 
     def test_attach_invalid_status_is_rejected(self, client) -> None:
         review = _create_review(client).json()
-        paper = _create_paper(client).json()
+        _create_paper(client, pmid=1000)
 
         response = client.post(
-            f"/reviews/{review['id']}/papers",
-            json={"paper_id": paper["id"], "status": "maybe"},
+            f"/api/reviews/{review['id']}/papers",
+            json={"pmid": 1000, "status": "maybe"},
         )
         assert response.status_code == 422
         assert "status" in response.text
 
-    def test_attach_unknown_paper_returns_404(self, client) -> None:
-        review = _create_review(client).json()
-        response = client.post(
-            f"/reviews/{review['id']}/papers",
-            json={"paper_id": str(uuid.uuid4())},
-        )
-        assert response.status_code == 404
-        assert response.json()["detail"] == "Paper not found"
-
     def test_attach_unknown_review_returns_404(self, client) -> None:
-        paper = _create_paper(client).json()
         response = client.post(
-            f"/reviews/{uuid.uuid4()}/papers",
-            json={"paper_id": paper["id"]},
+            f"/api/reviews/{uuid.uuid4()}/papers",
+            json={"pmid": 1000},
         )
         assert response.status_code == 404
         assert response.json()["detail"] == "Review not found"
 
     def test_attach_duplicate_link_conflicts(self, client) -> None:
         review = _create_review(client).json()
-        paper = _create_paper(client).json()
-        payload = {"paper_id": paper["id"], "status": "pending"}
+        _create_paper(client, pmid=1000)
+        payload = {"pmid": 1000, "status": "pending"}
 
-        assert client.post(f"/reviews/{review['id']}/papers", json=payload).status_code == 201
-        response = client.post(f"/reviews/{review['id']}/papers", json=payload)
+        assert client.post(f"/api/reviews/{review['id']}/papers", json=payload).status_code == 201
+        response = client.post(f"/api/reviews/{review['id']}/papers", json=payload)
         assert response.status_code == 409
 
 

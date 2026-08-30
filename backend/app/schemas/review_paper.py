@@ -10,10 +10,20 @@ ReviewPaperStatus = Literal["pending", "screened", "included", "excluded"]
 
 
 class ReviewPaperCreate(BaseModel):
-    """Attach an existing paper to a review with a screening status."""
+    """Attach a paper (by PMID) to a review with a screening status.
 
-    paper_id: UUID
+    The paper is looked up in the cache or fetched from PubMed if needed.
+    """
+
+    pmid: int = Field(gt=0)
     status: ReviewPaperStatus = "pending"
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class ReviewPaperUpdate(BaseModel):
+    """Partial update of a review–paper link (screening status / notes)."""
+
+    status: ReviewPaperStatus | None = None
     notes: str | None = Field(default=None, max_length=2000)
 
 

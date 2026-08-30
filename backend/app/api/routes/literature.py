@@ -19,7 +19,7 @@ from app.schemas.literature import LiteraturePaper, SearchResponse
 router = APIRouter(prefix="/api", tags=["literature"])
 
 
-def _to_http_exception(exc: PubMedError) -> HTTPException:
+def pubmed_error_response(exc: PubMedError) -> HTTPException:
     """Map integration errors to API responses the client can act on."""
     if isinstance(exc, PubMedRateLimitError):
         return HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc))
@@ -42,7 +42,7 @@ def _guard_pubmed(operation: Callable[[], SearchResponse | LiteraturePaper]):
     try:
         return operation()
     except PubMedError as exc:
-        raise _to_http_exception(exc) from exc
+        raise pubmed_error_response(exc) from exc
 
 
 @router.get("/search", response_model=SearchResponse)
