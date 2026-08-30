@@ -62,11 +62,11 @@ def create_evidence_extraction(
     payload: EvidenceExtractionCreate,
     db: Session = Depends(get_db),
 ) -> EvidenceExtraction:
-    """Record structured evidence extracted from a paper."""
+    """Record structured evidence extracted from a paper by a researcher."""
     if db.get(Paper, paper_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paper not found")
 
-    extraction = EvidenceExtraction(paper_id=paper_id, **payload.model_dump())
+    extraction = EvidenceExtraction(paper_id=paper_id, origin="manual", **payload.model_dump())
     db.add(extraction)
     db.commit()
     db.refresh(extraction)

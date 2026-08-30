@@ -24,10 +24,16 @@ if TYPE_CHECKING:
     from app.models.paper import Paper
 
 CONFIDENCE_LEVELS = ("low", "medium", "high")
+EXTRACTION_ORIGINS = ("manual", "llm")
 
 
 class EvidenceExtraction(Base):
-    """Structured evidence (PICO + results) taken from a single paper."""
+    """Structured evidence (PICO + results) taken from a single paper.
+
+    ``origin`` records whether the row was entered by a researcher (``manual``)
+    or produced by the LLM extraction agent (``llm``) so the UI can clearly
+    distinguish reported evidence from generated interpretation.
+    """
 
     __tablename__ = "evidence_extractions"
     __table_args__ = (
@@ -38,6 +44,10 @@ class EvidenceExtraction(Base):
         CheckConstraint(
             "sample_size IS NULL OR sample_size >= 0",
             name="ck_evidence_extractions_sample_size",
+        ),
+        CheckConstraint(
+            "origin IN ('manual', 'llm')",
+            name="ck_evidence_extractions_origin",
         ),
     )
 
@@ -57,6 +67,13 @@ class EvidenceExtraction(Base):
     key_finding: Mapped[str | None] = mapped_column(Text)
     limitations: Mapped[str | None] = mapped_column(Text)
     confidence: Mapped[str | None] = mapped_column(String(20))
+    origin: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        default="manual",
+        server_default="manual",
+    )
+    model_name: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
