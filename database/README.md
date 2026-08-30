@@ -1,34 +1,25 @@
 # database/
 
-Home of EvidenceOS's PostgreSQL schema and migration work.
+PostgreSQL persistence for EvidenceOS.
 
 ## Status
 
-Scaffolded only — the API is not wired to a database yet. This document records
-the plan so the schema lands coherently when feature work starts.
+Implemented. The FastAPI backend connects to PostgreSQL via SQLAlchemy 2.x,
+and schema changes are managed with Alembic migrations living in
+[`backend/alembic`](../backend/alembic) (entrypoint `backend/alembic/env.py`).
+Migrations run against the database in `DATABASE_URL`
+(see `backend/.env.example`).
 
-## Planned schema (v0)
+### Local Postgres
 
-Domain entities for the product:
+A single Postgres 16 container is the recommended local instance:
 
-- **papers** — deduplicated publications harvested from PubMed/NCBI
-  (`pmid` unique, title, abstract, authors, journal, publication year, DOI,
-  citation count).
-- **reviews** — an evidence review a user is building (title, question/PICO,
-  status/state, timestamps).
-- **review_papers** — join table attaching screened papers to a review
-  (screening status, notes, evidence rating per outcome).
-- **tags** — user/curated labels applied to papers and reviews.
-- **evidence_matrix** projection — the structured matrix (review × outcome ×
-  paper → rating/effect estimate) derived from `review_papers`, materialized
-  for read-efficient delivery to humans and agents.
+```sh
+make -C backend db-up      # start (creates the container the first time)
+make -C backend db-down    # stop & remove
+```
 
-## Approach
-
-- **ORM**: SQLAlchemy 2.x (typed, async-capable).
-- **Migrations**: Alembic, versioned migration scripts under
-  `backend/` (e.g. `backend/alembic/`).
-- **Local Postgres** (no extra services committed):
+or directly:
 
 ```sh
 docker run --name evidenceos-db -e POSTGRES_USER=evidenceos \
@@ -36,10 +27,31 @@ docker run --name evidenceos-db -e POSTGRES_USER=evidenceos \
   -p 5432:5432 -d postgres:16
 ```
 
-Then set `DATABASE_URL` in `backend/.env`
-(`postgresql+psycopg://evidenceos:evidenceos@localhost:5432/evidenceos`).
+### Migrations
+
+```sh
+make -C backend migrate            # apply: alembic upgrade head
+uv --directory backend run alembic revision --autogenerate -m "<message>"
+```
+
+## Schema
+
+- **reviews** — `id` (uuid pk), `title`, `research_question`, `created_at`.
+- **papers** — `id` (uuid pk), `pmid` (**unique**, indexed), `title`,
+  `abstract`, `authors`, `journal`, `publication_date` (indexed), `doi`, `url`.
+- **review_papers** — composite pk `(review_id, paper_id)`, `status`
+  (`pending/screened/included/excluded`), `notes`, `created_at`; `review_id`
+  and `paper_id` are both indexed; cascading deletes.
+- **evidence_extractions** — `id` (uuid pk), `paper_id` (fk, indexed),
+  `population`, `intervention`, `comparison`, `outcome`, `study_design`,
+  `sample_size` (≥ 0), `key_finding`, `limitations`, `confidence`
+  (`low/medium/high`), `created_at`.
+
+All rows use client-side `uuid4` primary keys (no DB extensions needed).
+The pytest suite runs against a dedicated `evidenceos_test` database whose
+schema is rebuilt before every test.
 
 ## Rule
 
 No dummy fixtures or in-memory stand-ins masquerading as a database at runtime —
-the code either talks to Postgres via the ORM or it stays unwired.
+the code talks to PostgreSQL via the ORM (or it stays unwired).

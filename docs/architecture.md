@@ -23,14 +23,14 @@ tools rather than through a side-channel chatbot.
 ## Runtime components
 
 ```
-┌─────────────────────────────┐     ┌───────────────────────────┐
-│  Browser tab                │     │  backend (FastAPI)        │
-│                             │     │                           │
-│  Next.js UI  ── fetch ────▶│────▶│  /health, /api/...        │
-│  (humans)                  │     │  └─ PubMed/NCBI API ────▶│ NCBI
-│                             │     │  └─ PostgreSQL (planned)  │
-│  WebMCP tools               │     │                           │
-│  ─ registered via           │     └───────────────────────────┘
+┌─────────────────────────────┐     ┌───────────────────────────────┐
+│  Browser tab                │     │  backend (FastAPI)            │
+│                             │     │                               │
+│  Next.js UI  ── fetch ────▶│────▶│  /health, /reviews, /papers   │
+│  (humans)                  │     │  └─ PubMed/NCBI API ────────▶│ NCBI
+│                             │     │  └─ PostgreSQL ─────────────▶│ DB
+│  WebMCP tools               │     │     (SQLAlchemy + Alembic)   │
+│  ─ registered via           │     └───────────────────────────────┘
 │    document.modelContext    │
 │  ─ called by in-page agent  │
 └─────────────────────────────┘
@@ -39,9 +39,9 @@ tools rather than through a side-channel chatbot.
 - **Frontend** renders the human UI and, via `@evidenceos/webmcp`, registers
   tools that call the **same application logic** the UI calls. Agents act on
   the live page: search, screen, annotate, and assemble evidence matrices.
-- **Backend** owns data access and domain logic: PubMed/NCBI retrieval and,
-  later, PostgreSQL persistence served to both frontend and agents through one
-  API contract.
+- **Backend** owns data access and domain logic: PubMed/NCBI retrieval and
+  PostgreSQL persistence (SQLAlchemy 2.x, Alembic-migrated) served to both
+  frontend and agents through one API contract.
 - **webmcp** holds the shared types + JSON Schemas so tool contracts stay in
   sync between the browser registration layer and the API.
 

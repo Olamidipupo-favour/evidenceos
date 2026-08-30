@@ -13,8 +13,8 @@ artifacts via structured browser tools.
 | Layer    | Tech                                                      |
 | -------- | --------------------------------------------------------- |
 | Frontend | Next.js · TypeScript · React · Tailwind CSS · shadcn/ui   |
-| Backend  | FastAPI · Python 3.14 (uv-managed venv)                   |
-| Data     | PostgreSQL (planned)                                      |
+| Backend  | FastAPI · SQLAlchemy 2.x · Alembic · Python 3.14          |
+| Data     | PostgreSQL                                                |
 | Sources  | PubMed / NCBI E-utilities (planned)                       |
 | Agents   | WebMCP (`document.modelContext`) via `@evidenceos/webmcp` |
 
@@ -24,7 +24,7 @@ artifacts via structured browser tools.
 ├── frontend/   Next.js app (UI) — port 3000
 ├── backend/    FastAPI service — port 8000
 ├── webmcp/     WebMCP tool contract types + JSON Schemas
-├── database/   PostgreSQL schema/migration plan
+├── database/   PostgreSQL schema + Alembic migration entrypoint
 ├── docs/       architecture.md · webmcp.md
 └── scripts/    setup.sh · dev.sh
 ```
@@ -65,16 +65,18 @@ npm run dev:frontend  # Next.js on :3000
 
 ## Environment variables
 
-| Var                   | Where                 | Default                     | Purpose                           |
-| --------------------- | --------------------- | --------------------------- | --------------------------------- |
-| `APP_NAME`            | `backend/.env`        | `EvidenceOS API`            | API display name                  |
-| `APP_ENV`             | `backend/.env`        | `development`               | Runtime environment               |
-| `CORS_ORIGINS`        | `backend/.env`        | `["http://localhost:3000"]` | JSON list of allowed origins      |
-| `NEXT_PUBLIC_API_URL` | `frontend/.env.local` | `http://localhost:8000`     | Backend base URL for the frontend |
+| Var                   | Where                 | Default                     | Purpose                             |
+| --------------------- | --------------------- | --------------------------- | ----------------------------------- |
+| `APP_NAME`            | `backend/.env`        | `EvidenceOS API`            | API display name                    |
+| `APP_ENV`             | `backend/.env`        | `development`               | Runtime environment                 |
+| `CORS_ORIGINS`        | `backend/.env`        | `["http://localhost:3000"]` | JSON list of allowed origins        |
+| `DATABASE_URL`        | `backend/.env`        | local dev Postgres          | SQLAlchemy URL for the app database |
+| `NEXT_PUBLIC_API_URL` | `frontend/.env.local` | `http://localhost:8000`     | Backend base URL for the frontend   |
 
-Placeholder config for the upcoming pieces (`DATABASE_URL`, PUBMED ids) is
-documented in the examples. **Never commit real secrets — `.env*` files are
-git-ignored.**
+The database must be running before the API starts
+(`make -C backend db-up`). Placeholder config for the upcoming pieces
+(PUBMED ids) is documented in the examples. **Never commit real secrets —
+`.env*` files are git-ignored.**
 
 ## Commands
 

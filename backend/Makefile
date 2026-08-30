@@ -1,6 +1,6 @@
 # EvidenceOS API convenience targets (via uv)
 
-.PHONY: install dev lint format format-check test
+.PHONY: install dev lint format format-check test db-up db-down migrate
 
 install:
 	uv sync
@@ -19,3 +19,18 @@ format-check:
 
 test:
 	uv run pytest
+
+db-up:
+	@if docker ps -a --format '{{.Names}}' | grep -qx 'evidenceos-db'; then \
+		docker start evidenceos-db; \
+	else \
+		docker run --name evidenceos-db \
+			-e POSTGRES_USER=evidenceos -e POSTGRES_PASSWORD=evidenceos \
+			-e POSTGRES_DB=evidenceos -p 5432:5432 -d postgres:16; \
+	fi
+
+db-down:
+	docker rm -f evidenceos-db
+
+migrate:
+	uv run alembic upgrade head
