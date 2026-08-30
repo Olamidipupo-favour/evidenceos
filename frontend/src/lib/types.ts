@@ -17,6 +17,11 @@ export interface LiteraturePaper {
   url: string | null;
 }
 
+/** A paper resolved against the EvidenceOS store (adds the internal UUID). */
+export interface PaperDetail extends LiteraturePaper {
+  id: string;
+}
+
 export interface SearchResponse {
   query: string;
   page: number;

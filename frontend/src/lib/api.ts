@@ -4,6 +4,7 @@ import type {
   EvidenceExtraction,
   ExtractionInput,
   LiteraturePaper,
+  PaperDetail,
   Review,
   ReviewMatrix,
   ReviewPaperLink,
@@ -92,11 +93,12 @@ export const api = {
   health: () => request<{ status: string }>("/health"),
 
   // Reviews
-  listReviews: () => request<Review[]>("/api/reviews"),
-  createReview: (title: string, researchQuestion: string | null) =>
+  listReviews: (signal?: AbortSignal) => request<Review[]>("/api/reviews", { signal }),
+  createReview: (title: string, researchQuestion: string | null, signal?: AbortSignal) =>
     request<Review>("/api/reviews", {
       method: "POST",
       body: JSON.stringify({ title, research_question: researchQuestion || null }),
+      signal,
     }),
   updateReview: (reviewId: string, patch: { title?: string; research_question?: string | null }) =>
     request<Review>(`/api/reviews/${reviewId}`, {
@@ -107,9 +109,12 @@ export const api = {
     request<void>(`/api/reviews/${reviewId}`, { method: "DELETE" }),
 
   // Literature
-  searchLiterature: (params: SearchParams) =>
-    request<SearchResponse>(`/api/search${queryString(params)}`),
-  getPaperByPmid: (pmid: number) => request<LiteraturePaper>(`/api/papers/${pmid}`),
+  searchLiterature: (params: SearchParams, signal?: AbortSignal) =>
+    request<SearchResponse>(`/api/search${queryString(params)}`, { signal }),
+  getPaperByPmid: (pmid: number, signal?: AbortSignal) =>
+    request<LiteraturePaper>(`/api/papers/${pmid}`, { signal }),
+  getPaperByUuid: (paperId: string, signal?: AbortSignal) =>
+    request<PaperDetail>(`/papers/${paperId}`, { signal }),
 
   // Review workspace
   attachPaper: (
@@ -117,10 +122,12 @@ export const api = {
     pmid: number,
     status: ScreeningStatus = "pending",
     notes: string | null = null,
+    signal?: AbortSignal,
   ) =>
     request<ReviewPaperLink>(`/api/reviews/${reviewId}/papers`, {
       method: "POST",
       body: JSON.stringify({ pmid, status, notes }),
+      signal,
     }),
   updateReviewPaper: (
     reviewId: string,
@@ -131,9 +138,10 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
-  removeReviewPaper: (reviewId: string, paperId: string) =>
-    request<void>(`/api/reviews/${reviewId}/papers/${paperId}`, { method: "DELETE" }),
-  getReviewMatrix: (reviewId: string) => request<ReviewMatrix>(`/api/reviews/${reviewId}/matrix`),
+  removeReviewPaper: (reviewId: string, paperId: string, signal?: AbortSignal) =>
+    request<void>(`/api/reviews/${reviewId}/papers/${paperId}`, { method: "DELETE", signal }),
+  getReviewMatrix: (reviewId: string, signal?: AbortSignal) =>
+    request<ReviewMatrix>(`/api/reviews/${reviewId}/matrix`, { signal }),
 
   // Evidence
   createExtraction: (paperId: string, input: ExtractionInput) =>
@@ -141,11 +149,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
-  extractEvidence: (reference: string | number) =>
+  extractEvidence: (reference: string | number, signal?: AbortSignal) =>
     request<EvidenceExtraction>(`/api/papers/${reference}/extract`, {
       method: "POST",
       body: JSON.stringify({}),
+      signal,
     }),
-  getEvidence: (reference: string | number) =>
-    request<EvidenceExtraction[]>(`/api/papers/${reference}/evidence`),
+  getEvidence: (reference: string | number, signal?: AbortSignal) =>
+    request<EvidenceExtraction[]>(`/api/papers/${reference}/evidence`, { signal }),
 };

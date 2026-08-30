@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { FileSearch, PanelRight } from "lucide-react";
+import { Bot, FileSearch, PanelRight } from "lucide-react";
 
 import { AgentActivity } from "@/components/agent-activity";
 import { ApiStatusPill } from "@/components/api-status";
@@ -13,12 +13,15 @@ import { QuestionPane } from "@/components/question-pane";
 import { ReviewCreate } from "@/components/review-create";
 import { SearchPane } from "@/components/search-pane";
 import { Stepper } from "@/components/stepper";
+import { WebmcpConsole } from "@/components/webmcp-console";
 import { WorkspacePane } from "@/components/workspace-pane";
 import { WorkspaceProvider, useWorkspace } from "@/lib/workspace";
+import { ensureRegistered } from "@/lib/webmcp/registry";
 
 function Shell() {
   const { apiStatus, reviews, reach } = useWorkspace();
   const [activityOpen, setActivityOpen] = useState(false);
+  const [agentActionsOpen, setAgentActionsOpen] = useState(false);
 
   const hasReview = reviews.length > 0;
 
@@ -55,6 +58,17 @@ function Shell() {
               <PanelRight className="size-3.5" aria-hidden="true" />
               Activity
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAgentActionsOpen((open) => !open)}
+              aria-expanded={agentActionsOpen}
+              aria-label="Toggle agent actions panel"
+              className={agentActionsOpen ? "text-signal" : ""}
+            >
+              <Bot className="size-3.5" aria-hidden="true" />
+              Agent actions
+            </Button>
           </div>
         </div>
         <div className="border-t px-4 py-1.5 md:hidden">
@@ -88,13 +102,23 @@ function Shell() {
 
       <PaperDetail />
       <AgentActivity open={activityOpen} onClose={() => setActivityOpen(false)} />
+      <WebmcpConsole open={agentActionsOpen} onClose={() => setAgentActionsOpen(false)} />
     </div>
   );
+}
+
+/** Registers the EvidenceOS tools with the browser's WebMCP surface on load. */
+function WebmcpHost() {
+  useEffect(() => {
+    void ensureRegistered();
+  }, []);
+  return null;
 }
 
 export function App() {
   return (
     <WorkspaceProvider>
+      <WebmcpHost />
       <Shell />
     </WorkspaceProvider>
   );

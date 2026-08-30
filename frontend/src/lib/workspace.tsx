@@ -173,6 +173,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (id) await loadMatrix(id);
   }, [loadMatrix]);
 
+  // When a WebMCP tool (or any other writer) mutates data out-of-band,
+  // re-read the reviews + matrix so the live UI reflects the change.
+  useEffect(() => {
+    const onDataChanged = () => {
+      void refreshMatrix();
+      api
+        .listReviews()
+        .then(setReviews)
+        .catch(() => {
+          // API offline — the matrix refresh already surfaces the failure.
+        });
+    };
+    window.addEventListener("evidenceos:data-changed", onDataChanged);
+    return () => window.removeEventListener("evidenceos:data-changed", onDataChanged);
+  }, [refreshMatrix]);
+
   const loadPaperEvidence = useCallback(async (pmid: number) => {
     setPaperEvidenceLoading(true);
     setPaperEvidenceError(null);

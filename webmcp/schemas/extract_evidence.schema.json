@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evidenceos/tools/extract_evidence",
+  "title": "Extract evidence",
+  "description": "Generate structured evidence from a paper.",
+  "type": "object",
+  "properties": {
+    "reference": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "description": "PubMed ID (PMID) to extract evidence from."
+        },
+        {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$",
+          "description": "PubMed ID given as a digit string."
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          "description": "Internal EvidenceOS paper UUID."
+        }
+      ],
+      "description": "The paper to run LLM-assisted evidence extraction on: a PubMed ID or an EvidenceOS paper UUID."
+    }
+  },
+  "required": ["reference"],
+  "additionalProperties": false
+}

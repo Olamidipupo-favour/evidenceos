@@ -99,11 +99,16 @@ Equivalents inside each app: `backend/Makefile` (`make lint test dev`),
 See [docs/webmcp.md](docs/webmcp.md) for the strategy and
 [webmcp/schemas](webmcp/schemas) for tool contracts. Key rules:
 
-- Agents use registered tools (`search_literature`, `create_review`,
-  `build_evidence_matrix`, …); `execute` handlers reuse the same logic the UI
-  calls.
-- Read-only tools may autosubmit; anything mutating requires human
-  confirmation.
+- Agents use the eight registered tools (`search_literature`, `get_paper`,
+  `create_review`, `add_paper_to_review`, `remove_paper_from_review`,
+  `extract_evidence`, `get_evidence_matrix`, `compare_papers`); `execute`
+  handlers call the same backend API the UI uses.
+- Every execution is mirrored into the **Agent actions** panel (header button):
+  registration status, registered tools, and a live call feed with inputs,
+  outputs, and errors, plus a _Run demonstration workflow_ button that replays
+  the full 8-tool flow over real WebMCP.
+- Read-only tools set `annotations.readOnlyHint: true`; mutations are annotated
+  `false` and remain visible/auditable in the human UI.
 - Progressive enhancement: no WebMCP browser support → plain human UI.
 
 ## License

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evidenceos/tools/create_review",
+  "title": "Create review",
+  "description": "Start a new evidence review.",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Short, descriptive title for the review."
+    },
+    "research_question": {
+      "type": ["string", "null"],
+      "maxLength": 2000,
+      "description": "Optional focused research question the review will answer."
+    }
+  },
+  "required": ["title"],
+  "additionalProperties": false
+}

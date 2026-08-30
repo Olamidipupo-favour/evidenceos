@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evidenceos/tools/compare_papers",
+  "title": "Compare papers",
+  "description": "Compare structured evidence across papers side-by-side.",
+  "type": "object",
+  "properties": {
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "PubMed ID of a paper to compare."
+      },
+      "minItems": 2,
+      "maxItems": 6,
+      "uniqueItems": true,
+      "description": "2–6 PubMed IDs to compare side-by-side."
+    }
+  },
+  "required": ["references"],
+  "additionalProperties": false
+}

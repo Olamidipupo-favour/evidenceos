@@ -4,19 +4,24 @@
 
 WebMCP (Web Model Context Protocol) is a **proposed web standard** that lets a
 website hand a browser-hosted AI agent a set of **structured tools** instead of
-leaving the agent to scrape the DOM. It exposes two APIs on a page:
+leaving the agent to scrape the DOM. It exposes an API surface on a page:
 
-- **Imperative** — `document.modelContext.registerTool({ name, description,
-  inputSchema, execute })`; the agent discovers tools via `getTools()` and calls
-  them via `executeTool()`.
-- **Declarative** — annotate an HTML `<form>` with `toolname`,
-  `tooldescription`, `toolparamdescription`, `toolautosubmit` and the browser
-  synthesizes a tool from the existing fields (`name`, `required`, `type`
-  become the JSON Schema).
+- `document.modelContext` (falling back to `navigator.modelContext`) — a
+  `ModelContext` object with:
+  - `registerTool(tool, { signal?, exposedTo? })` — register one tool;
+    duplicate names are rejected with an error.
+  - `getTools({ fromOrigins? })` — discover registered tools (sorted by name).
+  - `executeTool(tool, input, { signal? })` — invoke a tool; input is a JSON
+    object (agents ported from the Chrome MCP docs may pass a JSON string).
+  - a `toolchange` event fired when the registry changes.
 
-Tool descriptors intentionally share MCP's `Tool` vocabulary, but WebMCP is the
-*browser-side* sibling: tools are ephemeral (page-tab scoped), run in the user's
-session, and keep the human in the loop.
+Tools are ephemeral (page-tab scoped), run in the user's session, and return a
+JSON-serializable value which the browser hands to the agent as a string.
+
+**Gating.** WebMCP is only exposed in secure, origin-keyed contexts:
+`https://` with `Cross-Origin-Opener-Policy: same-origin`, or `file://`, in
+Chromium 146+ with the origin trial or `#enable-webmcp-testing`. Outside that
+the page degrades gracefully.
 
 ## Why it fits EvidenceOS
 
@@ -25,50 +30,69 @@ work agents are bad at and tools make reliable:
 
 - `search_literature` — a structured PubMed query beats an agent re-clicking a
   search box and mis-parsing result rows.
-- `get_paper` — fetch fully-structured metadata instead of screenshotting rows.
-- `create_review` / `add_paper_to_review` — structured arguments that cannot be
-  hallucinated into the wrong field.
-- `build_evidence_matrix` — deterministic, schema-driven matrix assembly.
+- `get_paper` / `compare_papers` — fully-structured metadata and a deterministic
+  side-by-side evidence comparison instead of screenshotting rows.
+- `create_review` / `add_paper_to_review` / `remove_paper_from_review` —
+  structured arguments that cannot be hallucinated into the wrong field.
+- `extract_evidence` — structured LLM extraction reusing the backend pipeline.
+- `get_evidence_matrix` — schema-driven matrix assembly.
 
 This is "agent + human on the same artifact", not a chatbot bolted on.
 
 ## EvidenceOS tool contract
 
-- Definitions & schemas: `webmcp/schemas/*.json`.
-- Registration helper + types: `webmcp/src/`.
-- Every `execute` calls the same fetch/handler the UI uses
-  (`frontend/`), staying API-driven and never duplicating logic.
+- Definitions & schemas: `webmcp/schemas/*.schema.json` + `webmcp/src/tools.ts`.
+- Registration + visibility layer: `frontend/src/lib/webmcp/registry.ts`
+  (feature detection, single-flight registration, a cap-60 call feed mirrored
+  into the **Agent Actions** panel, and a full end-to-end demonstration
+  workflow that runs every tool through the browser's real `getTools()` /
+  `executeTool()`).
+- Executors: `frontend/src/lib/webmcp/executors.ts` — every tool calls the same
+  backend API the human UI uses (`frontend/src/lib/api.ts`), staying API-driven
+  and never duplicating logic.
+- Validator: `frontend/src/lib/webmcp/validate.ts` — a draft 2020-12 subset
+  (types, unions, enums, const, required, `additionalProperties`, string
+  patterns/lengths, numeric bounds, arrays, `oneOf`/`anyOf`) applied before any
+  execution.
 - The `description` field is treated as a prompt: "Use when …" phrasing tells
   the agent *when* to invoke the tool.
 
 ## Safety rules (non-negotiable)
 
-1. `toolautosubmit` only on **read-only** tools (search, export). Anything that
-   mutates (create/attach) keeps an explicit human confirmation — via
-   `requestUserInteraction` or "human confirms to route" UI.
-2. Guard every registration with feature detection
-   (`document.modelContext || navigator.modelContext`); on browsers without
-   WebMCP the page behaves exactly as today.
-3. Validate agent-supplied arguments server-side on the backend API as well —
-   WebMCP is a UX/contract layer, not a security boundary.
-4. Do not register cross-origin tools without an explicit
-   `exposedTo: ["https://…"]` allowlist.
-5. Mutate the DOM *before* returning from `execute` so a verifying agent sees
-   the applied state, then return an MCP-style
-   `{ content: [{ type: "text", text }] }` result.
+1. **No fake tools.** Any registered tool must perform its real, observable
+   action through the backend — no mocks, no stubs, no hardcoded results.
+2. **Graceful degradation.** Guard every registration with feature detection;
+   on browsers without WebMCP the page behaves exactly as today (the panel
+   shows a clear "WebMCP unavailable" state with enablement guidance).
+3. **Validate agent inputs.** `inputSchema` + the frontend validator reject
+   malformed or unknown arguments before execution; the backend API validates
+   authoritatively as well — WebMCP is a UX/contract layer, not a security
+   boundary.
+4. **Mutation hints.** Annotate read-only tools with
+   `readOnlyHint: true`; mutating tools (create/attach/remove/extract) set
+   `readOnlyHint: false` and mark untrusted content with
+   `untrustedContentHint: true`. Humans stay in the loop through the existing
+   UI (reviews, screening, extraction) that any mutation feeds into.
+5. **Machine-readable results.** `execute` returns the tool's structured value
+   (serialized to a string by the browser), so an agent sees the applied state
+   in the same shape the UI works with.
+6. **No cross-origin exposure.** Do not register tools for other origins
+   without an explicit `exposedTo: ["https://…"]` allowlist.
 
 ## Testing
 
-- Google's "Model Context Tool Inspector" extension can list a page's registered
-  tools, call them manually, and validate JSON Schema — use it to verify tool
-  discovery and arguments during development.
-- Alternative/baseline: the same endpoints under a normal MCP server (for the
-  WebMCP vs server-MCP comparison, per the Chrome guidance that the two are
-  complementary).
+- `frontend/src/__tests__/webmcp-*` — vitest suites: schema-strictness tests for
+  every tool, executor tests against a mocked backend (determinism included),
+  registry tests against a fake `document.modelContext` (a `ModelContext`
+  `EventTarget`), and console component tests for both the supported and
+  degraded states.
+- Live: the **Agent Actions** panel ("agent actions" button in the header) shows
+  registration status, the registered tools, and every execution; the
+  *Run demonstration workflow* button replays the full 8-tool flow against the
+  live backend through WebMCP. Requires WebMCP-capable Chromium
+  (`#enable-webmcp-testing` or the origin trial).
 
 ## References
 
+- API specification (W3C draft): https://webmachinelearning.github.io/webmcp/
 - Chrome for Developers: https://developer.chrome.com/docs/ai/webmcp
-- API proposal (W3C Web Machine Learning WG):
-  https://webmachinelearning.github.io/webmcp/docs/proposal.html
-- WebMCP Challenge: https://openai.com/webmcp-challenge/

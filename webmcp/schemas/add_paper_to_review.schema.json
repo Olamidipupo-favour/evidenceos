@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evidenceos/tools/add_paper_to_review",
+  "title": "Add paper to review",
+  "description": "Attach a paper to a review.",
+  "type": "object",
+  "properties": {
+    "review_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+      "description": "EvidenceOS review UUID, as returned by create_review or get_evidence_matrix."
+    },
+    "pmid": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "PubMed ID of the paper to attach (see search_literature / get_paper)."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "screened", "included", "excluded"],
+      "default": "pending",
+      "description": "Initial screening status."
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "maxLength": 5000,
+      "description": "Optional free-text note about the paper."
+    }
+  },
+  "required": ["review_id", "pmid"],
+  "additionalProperties": false
+}

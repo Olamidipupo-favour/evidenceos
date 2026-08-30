@@ -8,6 +8,17 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname, ".."),
   },
+  // WebMCP (`document.modelContext`) requires the top-level document to live
+  // in an origin-keyed agent cluster. COOP: same-origin opts us into that;
+  // without it the browser refuses registerTool with a SecurityError.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [{ key: "Cross-Origin-Opener-Policy", value: "same-origin" }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

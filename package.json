@@ -15,6 +15,10 @@
     "test": "npm --prefix frontend test && make -C backend test",
     "build": "npm --prefix frontend run build && npm --prefix webmcp run build"
   },
+  "workspaces": [
+    "frontend",
+    "webmcp"
+  ],
   "devDependencies": {
     "concurrently": "^9.1.2",
     "prettier": "^3.5.3"

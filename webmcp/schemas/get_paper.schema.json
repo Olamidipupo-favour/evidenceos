@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evidenceos/tools/get_paper",
+  "title": "Get paper",
+  "description": "Fetch full metadata for a single paper.",
+  "type": "object",
+  "properties": {
+    "reference": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "description": "PubMed ID (PMID) to fetch."
+        },
+        {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$",
+          "description": "PubMed ID given as a digit string."
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          "description": "Internal EvidenceOS paper UUID."
+        }
+      ],
+      "description": "The paper to fetch: a PubMed ID or an EvidenceOS paper UUID."
+    }
+  },
+  "required": ["reference"],
+  "additionalProperties": false
+}
