@@ -42,6 +42,10 @@ export function WebmcpConsole({ open, onClose }: { open: boolean; onClose: () =>
   const [demoBusy, setDemoBusy] = useState(false);
 
   useEffect(() => {
+    // Registration is normally kicked off on page load (WebmcpHost), but be
+    // self-sufficient: if the module state is still unknown, start it here so
+    // an early-open panel never sits on "Checking…" forever.
+    if (getRuntimeState() === null) void ensureRegistered();
     const unsubscribeState = subscribeRuntimeState(() => setRuntime(getRuntimeState()));
     const unsubscribeCalls = subscribeToolCalls(() => setCalls(getToolCalls()));
     return () => {
@@ -123,9 +127,22 @@ function StatusBanner({
 }) {
   if (runtime === null) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-lg border bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground">
         <Spinner className="size-3.5 animate-spin" aria-hidden="true" />
-        Checking WebMCP support…
+        <span>Checking WebMCP support…</span>
+        <Button
+          variant="outline"
+          size="xs"
+          className="ml-auto"
+          onClick={() => {
+            resetRegistration();
+            void ensureRegistered();
+            onRefresh();
+          }}
+        >
+          <RefreshCw className="size-3" aria-hidden="true" />
+          Retry
+        </Button>
       </div>
     );
   }

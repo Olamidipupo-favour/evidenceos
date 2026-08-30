@@ -12,6 +12,7 @@ import {
   getTool,
   isValidToolName,
   tools,
+  type ModelContext,
   type RegisteredTool,
   type ToolContract,
   type WebMCPTool,
@@ -25,6 +26,32 @@ export type { RegisteredTool, ToolContract };
 
 const MAX_CALLS = 60;
 const DEMO_REVIEW_TITLE = "WebMCP demonstration";
+
+/**
+ * Registration must never hang the Agent Actions panel: if the browser's
+ * WebMCP surface swallows a `registerTool()` call (e.g. the document is not an
+ * origin-keyed agent cluster), settle on a `registration-failed` state instead
+ * of leaving the UI on "Checking WebMCP support…" forever.
+ */
+const REGISTRATION_TIMEOUT_MS = 10_000;
+const TOOL_REGISTRATION_TIMEOUT_MS = 3_000;
+
+/** Race a promise against a hard timeout; late resolutions are ignored. */
+function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 export type ToolCallSource = "executeTool" | "demo";
 export type ToolCallStatus = "running" | "ok" | "error";
@@ -128,7 +155,7 @@ export function subscribeToolCalls(listener: () => void): () => void {
 let runtimeState: RuntimeState | null = null;
 let registering: Promise<RuntimeState> | null = null;
 const stateListeners = new Set<() => void>();
-const registrationController = new AbortController();
+let registrationController = new AbortController();
 
 const NO_API_DETAIL =
   "This browser does not expose the WebMCP API (document.modelContext), so agents " +
@@ -165,6 +192,8 @@ export async function discoverTools(): Promise<RegisteredTool[]> {
 
 /** Forget registration results so the next `ensureRegistered()` retries. */
 export function resetRegistration(): void {
+  registrationController.abort();
+  registrationController = new AbortController();
   runtimeState = null;
   registering = null;
   publishState();
@@ -172,6 +201,8 @@ export function resetRegistration(): void {
 
 /** Wipe recorded calls and registration state (tests, retry flows). */
 export function resetRegistry(): void {
+  registrationController.abort();
+  registrationController = new AbortController();
   calls = [];
   runtimeState = null;
   registering = null;
@@ -198,56 +229,77 @@ export function ensureRegistered(): Promise<RuntimeState> {
       ctx.addEventListener("toolchange", () => publishState());
     }
 
-    const contracts: RegisteredContract[] = [];
-    for (const contract of tools) {
-      const entry: RegisteredContract = {
-        name: contract.name,
-        title: contract.title,
-        description: contract.description,
-        readOnly: contract.annotations?.readOnlyHint ?? false,
-        untrustedContent: contract.annotations?.untrustedContentHint ?? false,
-        registered: false,
-        error: null,
-      };
-
-      try {
-        if (!isValidToolName(contract.name)) {
-          throw new ToolArgumentError(`Invalid WebMCP tool name "${contract.name}"`);
-        }
-        await ctx.registerTool(buildTool(contract), { signal: registrationController.signal });
-        entry.registered = true;
-      } catch (error) {
-        const message = errorMessage(error);
-        // The name may already be held from a previous page lifecycle (HMR);
-        // treat that as registered rather than failing the batch.
-        if (/already|registered|duplicate/i.test(message)) {
-          entry.registered = true;
-          entry.error = "Already registered (re-registered over a previous lifecycle).";
-        } else {
-          entry.error = message;
-        }
-      }
-      contracts.push(entry);
-    }
-
-    const registeredCount = contracts.filter((entry) => entry.registered).length;
-    if (registeredCount === 0) {
+    try {
+      return await withTimeout(registerTools(ctx), REGISTRATION_TIMEOUT_MS, "WebMCP registration");
+    } catch (error) {
       return setRuntimeState({
         supported: false,
         reason: "registration-failed",
-        detail: contracts
-          .map((entry) => `${entry.name}: ${entry.error ?? "registration failed"}`)
-          .join("; "),
+        detail:
+          "The browser did not settle WebMCP tool registration." +
+          ` ${errorMessage(error)}.` +
+          " This can happen when Chromium does not see an origin-keyed agent " +
+          "cluster — the document needs Cross-Origin-Opener-Policy: same-origin " +
+          "— or when an agent is confirming each tool grant. Re-check attempts again.",
       });
     }
-
-    const errors = contracts
-      .filter((entry) => !entry.registered)
-      .map((entry) => `${entry.name}: ${entry.error}`);
-    return setRuntimeState({ supported: true, registered: contracts, errors });
   })();
 
   return registering;
+}
+
+async function registerTools(ctx: ModelContext): Promise<RuntimeState> {
+  const contracts: RegisteredContract[] = [];
+  for (const contract of tools) {
+    const entry: RegisteredContract = {
+      name: contract.name,
+      title: contract.title,
+      description: contract.description,
+      readOnly: contract.annotations?.readOnlyHint ?? false,
+      untrustedContent: contract.annotations?.untrustedContentHint ?? false,
+      registered: false,
+      error: null,
+    };
+
+    try {
+      if (!isValidToolName(contract.name)) {
+        throw new ToolArgumentError(`Invalid WebMCP tool name "${contract.name}"`);
+      }
+      await withTimeout(
+        ctx.registerTool(buildTool(contract), { signal: registrationController.signal }),
+        TOOL_REGISTRATION_TIMEOUT_MS,
+        `registerTool("${contract.name}")`,
+      );
+      entry.registered = true;
+    } catch (error) {
+      const message = errorMessage(error);
+      // The name may already be held from a previous page lifecycle (HMR);
+      // treat that as registered rather than failing the batch.
+      if (/already|registered|duplicate/i.test(message)) {
+        entry.registered = true;
+        entry.error = "Already registered (re-registered over a previous lifecycle).";
+      } else {
+        entry.error = message;
+      }
+    }
+    contracts.push(entry);
+  }
+
+  const registeredCount = contracts.filter((entry) => entry.registered).length;
+  if (registeredCount === 0) {
+    return setRuntimeState({
+      supported: false,
+      reason: "registration-failed",
+      detail: contracts
+        .map((entry) => `${entry.name}: ${entry.error ?? "registration failed"}`)
+        .join("; "),
+    });
+  }
+
+  const errors = contracts
+    .filter((entry) => !entry.registered)
+    .map((entry) => `${entry.name}: ${entry.error}`);
+  return setRuntimeState({ supported: true, registered: contracts, errors });
 }
 
 // ---------------------------------------------------------------------------

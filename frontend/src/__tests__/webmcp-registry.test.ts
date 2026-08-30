@@ -4,6 +4,7 @@ import {
   getModelContext,
   registerTool,
   tools,
+  type ModelContext,
   type RegisteredTool,
   type WebMCPTool,
 } from "@evidenceos/webmcp";
@@ -182,6 +183,47 @@ describe("registry — WebMCP feature detection", () => {
       }),
     ).resolves.toBe(false);
     expect(getModelContext()).toBeNull();
+  });
+});
+
+describe("registry — registration watchdog", () => {
+  afterEach(() => {
+    uninstallFakeContext();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("settles to registration-failed instead of hanging on a stalled browser", async () => {
+    vi.useFakeTimers();
+    resetRegistry();
+    uninstallFakeContext();
+
+    class HungContext extends EventTarget implements ModelContext {
+      readonly tools = new Map<string, WebMCPTool>();
+      async registerTool(tool: WebMCPTool): Promise<undefined> {
+        this.tools.set(tool.name, tool);
+        return new Promise(() => {});
+      }
+      async getTools(): Promise<RegisteredTool[]> {
+        return [];
+      }
+      async executeTool(): Promise<string> {
+        return "[]";
+      }
+      ontoolchange: ((event: Event) => void) | null = null;
+    }
+    Object.defineProperty(window.document, "modelContext", {
+      value: new HungContext(),
+      configurable: true,
+    });
+
+    const pending = ensureRegistered();
+    await vi.advanceTimersByTimeAsync(10_001);
+
+    const state = await pending;
+    expect(state.supported).toBe(false);
+    if (!state.supported) expect(state.reason).toBe("registration-failed");
+    expect(getRuntimeState()?.supported).toBe(false);
   });
 });
 
