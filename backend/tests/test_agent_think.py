@@ -156,6 +156,52 @@ class TestDecisionParser:
         with pytest.raises(Exception, match="unexpected decision keys"):
             parse_decision('{"done": false, "tool": "x", "banana": 1}', {"x"})
 
+    def test_extracts_decision_wrapped_in_a_markdown_fence(self) -> None:
+        text = (
+            "We need to run the workflow inside the existing review, so the next step is to "
+            "search for candidate studies to screen and select as the primary study.\n"
+            '```json\n{"tool": "search_literature", '
+            '"arguments": {"query": "metformin type 2 diabetes cardiovascular outcomes", '
+            '"page_size": 10}}\n```'
+        )
+        decision = parse_decision(text, {"search_literature"})
+        assert decision.done is False
+        assert decision.tool == "search_literature"
+        assert decision.arguments == {
+            "query": "metformin type 2 diabetes cardiovascular outcomes",
+            "page_size": 10,
+        }
+
+    def test_extracts_decision_surrounded_by_trailing_prose(self) -> None:
+        text = (
+            "I'll add the primary study now.\n"
+            '{"done": false, "tool": "add_paper_to_review", '
+            '"arguments": {"review_id": "abc", "pmid": 1}}\n'
+            "Then I will extract its evidence next turn."
+        )
+        decision = parse_decision(text, {"add_paper_to_review"})
+        assert decision.tool == "add_paper_to_review"
+        assert decision.arguments == {"review_id": "abc", "pmid": 1}
+
+    def test_extracts_decision_buried_in_freeform_reasoning(self) -> None:
+        text = (
+            "The matrix is confirmed and both papers are compared, so I will remove the "
+            "redundant paper to keep the review clean "
+            '{"tool": "remove_paper_from_review", "arguments": {"review_id": "r", '
+            '"paper_id": "p"}} and then finish.'
+        )
+        decision = parse_decision(text, {"remove_paper_from_review"})
+        assert decision.tool == "remove_paper_from_review"
+
+    def test_prefers_the_last_fence_over_earlier_json(self) -> None:
+        text = (
+            '{"done": true, "summary": "earlier"}\n'
+            "Hmm, actually let me reconsider.\n"
+            '```\n{"done": false, "tool": "get_paper", "arguments": {"reference": 4}}\n```'
+        )
+        decision = parse_decision(text, {"get_paper"})
+        assert decision.tool == "get_paper"
+
 
 class TestMessageBuilding:
     def test_appends_goal_context_and_tools(self) -> None:

@@ -77,6 +77,8 @@ _SYSTEM_PROMPT = (
 
 _DONE_KEYS = {"summary"}
 _DECISION_KEYS = {"done", "tool", "arguments", "summary"}
+_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
+_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
 def build_think_messages(request: AgentThinkRequest) -> list[dict[str, Any]]:
@@ -110,26 +112,62 @@ def _format_tool(tool: AgentToolInfo) -> str:
 
 
 def parse_decision(text: str, tool_names: set[str]) -> AgentDecision:
-    """Extract the single-line JSON decision from the end of the reply."""
-    candidate: str | None = None
-    for line in reversed(text.splitlines()):
-        stripped = line.strip()
-        if stripped.startswith("{") and stripped.endswith("}"):
-            candidate = stripped
-            break
-    if candidate is None:
+    """Extract the structured decision from the planner's reply.
+
+    The planner is told to end with a bare single-line JSON object, but live
+    models frequently deviate: they wrap the JSON in a markdown `````json`` `````
+    fence, tack trailing prose after it, or bury it inside the reasoning text.
+    Candidates are therefore tried in order:
+    the last fenced code block, the whole reply when it is pure JSON, the last
+    non-empty line that looks like an object, then any JSON object in the
+    reply. The first candidate that parses to a well-formed decision wins.
+    """
+    raw = text.strip() or ""
+    if not raw:
         raise AgentResultError(
             "The planner produced no machine-readable decision. Nothing was executed."
         )
-    try:
-        obj = json.loads(candidate)
-    except json.JSONDecodeError as exc:
-        raise AgentResultError(
-            "The planner's decision line was not valid JSON. Nothing was executed."
-        ) from exc
-    if not isinstance(obj, dict):
-        raise AgentResultError("The planner returned a decision that was not an object.")
 
+    candidates: list[str] = []
+
+    last_block: str | None = None
+    for match in _FENCE_RE.finditer(raw):
+        last_block = match.group(1).strip()
+    if last_block:
+        candidates.append(last_block)
+
+    if raw.startswith("{") and raw.endswith("}"):
+        candidates.append(raw)
+
+    for line in reversed(raw.splitlines()):
+        stripped = line.strip()
+        if stripped.startswith("{") and stripped.endswith("}"):
+            candidates.append(stripped)
+
+    object_end = _OBJECT_RE.search(raw)
+    if object_end:
+        candidates.append(object_end.group(0))
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            obj = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        return _validate_decision(obj, tool_names)
+
+    raise AgentResultError(
+        "The planner produced no machine-readable decision. Nothing was executed."
+    )
+
+
+def _validate_decision(obj: dict[str, Any], tool_names: set[str]) -> AgentDecision:
+    """Validate a parsed decision object against the contract."""
     known = set(obj).difference(_DECISION_KEYS)
     if known:
         raise AgentResultError(
