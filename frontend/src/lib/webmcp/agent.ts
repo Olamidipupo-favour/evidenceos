@@ -180,6 +180,8 @@ export async function runAgentWorkflow(opts: AgentRunOptions): Promise<AgentOutc
   const transcript: AgentMessage[] = [];
   const toolNames = new Set(opts.tools.map((tool) => tool.name));
   const byName = new Map(opts.tools.map((tool) => [tool.name, tool]));
+  let plannerRetries = 0;
+  const MAX_PLANNER_RETRIES = 2;
 
   try {
     for (let step = 1; step <= MAX_STEPS; step += 1) {
@@ -213,6 +215,21 @@ export async function runAgentWorkflow(opts: AgentRunOptions): Promise<AgentOutc
       }
 
       if (failure) {
+        // Planner parse errors are retryable: feed the error back into the
+        // transcript so the model can correct itself on the next attempt.
+        if (plannerRetries < MAX_PLANNER_RETRIES) {
+          plannerRetries += 1;
+          opts.feed.resolveThought(thoughtId, "error");
+          transcript.push({
+            role: "tool",
+            tool_call_id: "__planner_error__",
+            content:
+              `Error: ${failure}. Your response MUST end with a valid raw JSON ` +
+              "object on the final line — no markdown fences, no backticks, no " +
+              "trailing words. Try again.",
+          });
+          continue;
+        }
         opts.feed.resolveThought(thoughtId, "error");
         throw new AgentFailure(failure);
       }
