@@ -1,6 +1,6 @@
 # EvidenceOS API convenience targets (via uv)
 
-.PHONY: install dev lint format format-check test db-up db-down migrate
+.PHONY: install dev lint format format-check test db-up db-down migrate db-seed db-seed-reset
 
 install:
 	uv sync
@@ -34,3 +34,11 @@ db-down:
 
 migrate:
 	uv run alembic upgrade head
+
+# Deterministic demo data (see app/seed_demo.py). Idempotent; safe to run
+# repeatedly. --reset tears the demo rows down and recreates them.
+db-seed:
+	uv run python -m app.seed_demo
+
+db-seed-reset:
+	uv run python -m app.seed_demo --reset

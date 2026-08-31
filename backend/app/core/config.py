@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +23,25 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
 
     database_url: str = "postgresql+psycopg://evidenceos:evidenceos@localhost:5432/evidenceos"
+
+    # Per-client-IP guard for /api routes (60-second fixed window).
+    # 0 disables rate limiting entirely.
+    rate_limit_per_minute: int = 120
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_database_url(cls, value: str) -> str:
+        """Accept provider-style URLs by forcing the psycopg driver.
+
+        Managed Postgres (e.g. Render) hands out ``postgres://`` DSNs; SQLAlchemy
+        needs an explicit dialect driver, so normalize those to
+        ``postgresql+psycopg://`` here instead of patching every deployment.
+        """
+        if value.startswith("postgres://"):
+            return value.replace("postgres://", "postgresql+psycopg://", 1)
+        if value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+psycopg://", 1)
+        return value
 
     # PubMed/NCBI E-utilities. An email is required by NCBI policy; an API key
     # raises the permitted request rate (10 rps instead of 3 rps).

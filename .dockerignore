@@ -1,0 +1,29 @@
+# Docker build context is the repo root (Render default). Keep image builds
+# fast and clean by excluding everything the API image does not need.
+.git
+.gitignore
+.github
+
+node_modules/
+frontend/
+webmcp/
+docs/
+database/
+scripts/
+
+*.md
+!.dockerignore
+
+.env
+.env.*
+!.env.example
+
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+.next/
+coverage/
+*.log

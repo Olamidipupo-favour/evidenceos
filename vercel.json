@@ -1,0 +1,6 @@
+{
+  "framework": "nextjs",
+  "rootDirectory": "frontend",
+  "installCommand": "cd .. && npm install",
+  "buildCommand": "npm --prefix ../webmcp run build && npm run build"
+}
