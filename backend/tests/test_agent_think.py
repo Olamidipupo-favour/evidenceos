@@ -172,6 +172,20 @@ class TestDecisionParser:
             "page_size": 10,
         }
 
+    def test_accepts_input_alias_for_arguments(self) -> None:
+        text = (
+            "The active review already exists, so the first step is to find candidate primary "
+            "studies in the literature without creating a new review.\n"
+            '```json\n{"tool": "search_literature", "input": {'
+            '"query": "SGLT2 inhibitors cardiovascular outcomes", "page_size": 25}}\n```'
+        )
+        decision = parse_decision(text, {"search_literature"})
+        assert decision.tool == "search_literature"
+        assert decision.arguments == {
+            "query": "SGLT2 inhibitors cardiovascular outcomes",
+            "page_size": 25,
+        }
+
     def test_extracts_decision_surrounded_by_trailing_prose(self) -> None:
         text = (
             "I'll add the primary study now.\n"

@@ -78,6 +78,9 @@ _SYSTEM_PROMPT = (
 
 _DONE_KEYS = {"summary"}
 _DECISION_KEYS = {"done", "tool", "arguments", "summary"}
+# Models regularly write "input" instead of "arguments" for the tool payload;
+# accept both and normalize to "arguments".
+_ARGUMENT_KEYS = {"arguments", "input"}
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 _OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
 
@@ -169,22 +172,31 @@ def parse_decision(text: str, tool_names: set[str]) -> AgentDecision:
 
 def _validate_decision(obj: dict[str, Any], tool_names: set[str]) -> AgentDecision:
     """Validate a parsed decision object against the contract."""
-    known = set(obj).difference(_DECISION_KEYS)
+    if obj.get("done"):
+        summary = str(obj.get("summary")) if obj.get("summary") else None
+        return AgentDecision(done=True, summary=summary)
+
+    # A done-only-decision may still carry summary; anything unexpected on a
+    # non-done decision (other than the argument alias) is rejected.
+    allowed = _DECISION_KEYS | _ARGUMENT_KEYS
+    known = set(obj).difference(allowed)
     if known:
         raise AgentResultError(
             "The planner returned unexpected decision keys: " + ", ".join(sorted(known))
         )
-
-    if obj.get("done"):
-        summary = str(obj.get("summary")) if obj.get("summary") else None
-        return AgentDecision(done=True, summary=summary)
 
     tool = obj.get("tool")
     if not isinstance(tool, str) or tool not in tool_names:
         raise AgentResultError(
             f'The planner chose an unknown tool: "{tool}". Nothing was executed.'
         )
-    arguments = obj.get("arguments") or {}
+    arguments = None
+    for key in _ARGUMENT_KEYS:
+        value = obj.get(key)
+        if value is not None:
+            arguments = value
+            break
+    arguments = arguments or {}
     if not isinstance(arguments, dict):
         raise AgentResultError("The planner's tool arguments must be a JSON object.")
     return AgentDecision(done=False, tool=tool, arguments=arguments)
