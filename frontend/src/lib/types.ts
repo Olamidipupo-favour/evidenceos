@@ -91,7 +91,7 @@ export interface ExtractionInput {
 export interface ActivityEntry {
   id: string;
   at: string;
-  kind: "search" | "add" | "screen" | "note" | "remove" | "evidence" | "review";
+  kind: "search" | "add" | "screen" | "note" | "remove" | "evidence" | "review" | "tool";
   message: string;
   tone: "neutral" | "accent" | "positive" | "warning";
 }

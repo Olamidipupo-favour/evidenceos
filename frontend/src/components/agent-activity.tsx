@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Bot,
   FlaskConical,
   ListChecks,
   Plus,
@@ -26,6 +27,7 @@ const KIND_ICONS: Record<ActivityEntry["kind"], LucideIcon> = {
   remove: Trash2,
   evidence: FlaskConical,
   review: Radio,
+  tool: Bot,
 };
 
 const TONE_CLASS: Record<ActivityEntry["tone"], string> = {
@@ -45,7 +47,7 @@ export function AgentActivity({ open, onClose }: { open: boolean; onClose: () =>
       title={
         <div className="flex items-center gap-2">
           <Radio className="size-4 text-signal" aria-hidden="true" />
-          <span className="text-sm font-semibold tracking-tight">Agent activity</span>
+          <span className="text-sm font-semibold tracking-tight">Activity</span>
           <span className="rounded-full bg-muted px-2 py-0.5 text-[0.6875rem] font-medium text-muted-foreground">
             {activity.length}
           </span>
@@ -58,7 +60,7 @@ export function AgentActivity({ open, onClose }: { open: boolean; onClose: () =>
             compact
             icon={Radio}
             title="Nothing logged yet"
-            description="Actions you take across the workspace appear here in real time — searches, adds, screening, notes and evidence extractions."
+            description="Actions across the workspace appear here in real time — searches, adds, screening, notes, evidence extractions, and WebMCP agent tool calls."
           />
         ) : (
           <ul className="relative space-y-1">

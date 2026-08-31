@@ -5,11 +5,14 @@ import { useEffect, useState } from "react";
 import {
   Bot,
   CheckCircle2,
+  ChevronDown,
   CircleOff,
+  Lightbulb,
   ListOrdered,
   Play,
   RefreshCw,
   ShieldCheck,
+  Square,
   XCircle,
 } from "lucide-react";
 
@@ -19,6 +22,7 @@ import { Drawer } from "@/components/ui/drawer";
 import { Spinner } from "@/components/ui/spinner";
 import { formatActivityTime } from "@/lib/format";
 import {
+  abortRunningAgent,
   type DemonstrationSummary,
   type RegisteredContract,
   type RuntimeState,
@@ -72,6 +76,13 @@ export function WebmcpConsole({ open, onClose }: { open: boolean; onClose: () =>
     }
   };
 
+  const scrollToFeed = () => {
+    document.getElementById("webmcp-calls-feed")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+
   const supported = runtime?.supported === true;
   const registeredCount = supported ? runtime.registered.length : 0;
 
@@ -100,12 +111,13 @@ export function WebmcpConsole({ open, onClose }: { open: boolean; onClose: () =>
     >
       <div className="space-y-5 p-5">
         <StatusBanner runtime={runtime} onRefresh={refreshDiscovery} />
+        <WhyWebMcp />
         <RunDemoButton
           supported={supported}
           busy={demoBusy}
           recent={demo}
           onRun={runDemo}
-          onClose={onClose}
+          onWatchFeed={scrollToFeed}
         />
         <ToolsSection
           runtime={runtime}
@@ -193,42 +205,77 @@ function StatusBanner({
   );
 }
 
+function WhyWebMcp() {
+  return (
+    <details className="group rounded-lg border bg-card px-3 py-2.5">
+      <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-medium text-foreground/90">
+        <Lightbulb className="size-3.5 text-signal" aria-hidden="true" />
+        Why WebMCP powers this interaction
+        <ChevronDown className="ml-auto size-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
+      </summary>
+      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+        Agents don&apos;t scrape the UI. The app registers its real search, review, and extraction
+        operations as 8 structured tools on the browser&apos;s WebMCP{" "}
+        <code className="text-[0.6875rem]">document.modelContext</code> contract, so any
+        WebMCP-capable agent drives the same EvidenceOS API the UI uses — as discrete, auditable
+        steps that all appear in the feed below. That&apos;s why the whole flow (search → select →
+        add → extract → matrix) is reproducible in this browser instead of being glued together from
+        screenshots.
+      </p>
+    </details>
+  );
+}
+
 function RunDemoButton({
   supported,
   busy,
   recent,
   onRun,
-  onClose,
+  onWatchFeed,
 }: {
   supported: boolean;
   busy: boolean;
   recent: DemonstrationSummary | null;
   onRun: () => void;
-  onClose: () => void;
+  onWatchFeed: () => void;
 }) {
   return (
     <div className="rounded-lg border bg-card px-3 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium">Demonstration workflow</p>
+          <p className="text-sm font-medium">Agent orchestrator run</p>
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-            Runs all 8 tools in sequence through the real WebMCP surface — search, fetch, create a
-            throwaway review, extract LLM evidence, compare papers, then clean up.
+            An LLM planner thinks out loud and chooses each tool call itself — search, fetch, add,
+            extract, compare — driving the review you have open through the browser&apos;s real
+            WebMCP surface. Watch its reasoning and every tool it picks stream into the feed below.
           </p>
         </div>
-        <Button
-          size="sm"
-          disabled={!supported || busy}
-          onClick={busy ? undefined : onRun}
-          aria-label="Run the full WebMCP demonstration workflow"
-        >
+        <div className="flex items-center gap-2">
           {busy ? (
-            <Spinner className="size-3.5 animate-spin" aria-hidden="true" />
-          ) : (
-            <Play className="size-3.5" aria-hidden="true" />
-          )}
-          {busy ? "Running…" : "Run workflow"}
-        </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => abortRunningAgent()}
+              aria-label="Stop the running agent"
+            >
+              <Square className="size-3.5" aria-hidden="true" />
+              Stop
+            </Button>
+          ) : null}
+          <Button
+            size="sm"
+            disabled={!supported || busy}
+            onClick={busy ? undefined : onRun}
+            aria-label="Run the full WebMCP end-to-end workflow"
+          >
+            {busy ? (
+              <Spinner className="size-3.5 animate-spin" aria-hidden="true" />
+            ) : (
+              <Play className="size-3.5" aria-hidden="true" />
+            )}
+            {busy ? "Agent is thinking…" : "Run agent"}
+          </Button>
+        </div>
       </div>
       {!supported ? (
         <p className="mt-2 text-xs text-muted-foreground">
@@ -245,12 +292,13 @@ function RunDemoButton({
           )}
         >
           {recent.ok
-            ? `Workflow complete: ${recent.executed.length} tool calls ran.`
+            ? `Workflow complete: the agent ran ${recent.executed.length} tool call(s) across ${recent.steps ?? "?"} step(s).`
             : `Workflow failed: ${recent.error ?? "unknown error"}`}
+          {recent.summary ? ` ${recent.summary}` : ""}
           {recent.skipped.length > 0 ? ` Skipped: ${recent.skipped.join(", ")}.` : ""}{" "}
           <button
             type="button"
-            onClick={onClose}
+            onClick={onWatchFeed}
             className="cursor-pointer underline decoration-dotted underline-offset-2"
           >
             Watch the feed below.
@@ -351,14 +399,14 @@ function ToolRow({ entry }: { entry: RegisteredContract }) {
 
 function CallsFeed({ calls }: { calls: ToolCallRecord[] }) {
   return (
-    <section>
+    <section id="webmcp-calls-feed">
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Tool calls
       </h3>
       {calls.length === 0 ? (
         <p className="rounded-md bg-muted/40 px-2.5 py-2 text-xs text-muted-foreground">
-          No tool executions yet. Run the demonstration workflow, or invoke a tool from an agent
-          connected over WebMCP.
+          Nothing here yet. Run the agent to watch it think out loud and pick each tool, or see
+          calls from an external agent connected over WebMCP.
         </p>
       ) : (
         <ul className="divide-y divide-border/70 overflow-hidden rounded-lg border">
@@ -372,6 +420,10 @@ function CallsFeed({ calls }: { calls: ToolCallRecord[] }) {
 }
 
 function CallRow({ call }: { call: ToolCallRecord }) {
+  if (call.kind === "thought") {
+    return <ThoughtRow call={call} />;
+  }
+
   return (
     <li className="px-3 py-2">
       <div className="flex items-center gap-2">
@@ -412,4 +464,38 @@ function CallRow({ call }: { call: ToolCallRecord }) {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Renders an "agent is thinking…" row whose text streams in token by token. */
+function ThoughtRow({ call }: { call: ToolCallRecord }) {
+  return (
+    <li className="px-3 py-2">
+      <div className="flex items-center gap-2">
+        <Lightbulb className="size-3.5 shrink-0 text-signal" aria-hidden="true" />
+        <Badge variant="signal" className="px-1.5 py-0 text-[0.625rem]">
+          thinking
+        </Badge>
+        <span className="ml-auto shrink-0 text-[0.6875rem] text-muted-foreground">
+          {formatActivityTime(call.startedAt)}
+        </span>
+      </div>
+      {call.result ? (
+        <p
+          className={cn(
+            "mt-1 text-xs leading-relaxed text-muted-foreground",
+            call.status === "running" && call.result?.endsWith(" ") ? "animate-pulse" : "",
+          )}
+        >
+          {call.result}
+          {call.status === "running" ? (
+            <span aria-hidden="true" className="-ml-0.5 inline-block animate-pulse">
+              ▍
+            </span>
+          ) : null}
+        </p>
+      ) : (
+        <p className="mt-1 text-xs italic text-muted-foreground">Planning the next step…</p>
+      )}
+    </li>
+  );
 }

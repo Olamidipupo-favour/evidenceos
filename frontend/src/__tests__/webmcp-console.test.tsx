@@ -90,7 +90,7 @@ describe("WebmcpConsole", () => {
     }
     expect(screen.getAllByText("read-only").length).toBeGreaterThan(0);
     expect(
-      screen.getByRole("button", { name: /run the full webmcp demonstration workflow/i }),
+      screen.getByRole("button", { name: /run the full webmcp end-to-end workflow/i }),
     ).not.toBeDisabled();
   });
 
@@ -144,7 +144,7 @@ describe("WebmcpConsole", () => {
     renderConsole();
 
     const runButton = screen.getByRole("button", {
-      name: /run the full webmcp demonstration workflow/i,
+      name: /run the full webmcp end-to-end workflow/i,
     });
     expect(runButton).not.toBeDisabled();
 
