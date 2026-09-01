@@ -1,5 +1,6 @@
 """EvidenceOS API application factory and entrypoint."""
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -12,6 +13,7 @@ from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.core.rate_limit import RateLimitMiddleware
+from app.keepalive import keepalive_loop
 
 settings = get_settings()
 logger = logging.getLogger("app")
@@ -25,8 +27,16 @@ async def lifespan(application: FastAPI):
         settings.app_env,
         settings.rate_limit_per_minute,
     )
-    yield
-    logger.info("%s stopped", settings.app_name)
+    keepalive = asyncio.create_task(keepalive_loop())
+    try:
+        yield
+    finally:
+        keepalive.cancel()
+        try:
+            await keepalive
+        except asyncio.CancelledError:
+            pass
+        logger.info("%s stopped", settings.app_name)
 
 
 def create_app() -> FastAPI:

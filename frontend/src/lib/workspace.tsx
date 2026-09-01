@@ -269,14 +269,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // Boot: check API health, load reviews, restore the active review.
   useEffect(() => {
     let cancelled = false;
+    let checkTimer: ReturnType<typeof setTimeout> | undefined;
 
-    (async () => {
+    const checkHealth = async (attempt: number): Promise<void> => {
       try {
         await api.health();
         if (!cancelled) setApiStatus("online");
       } catch {
-        if (!cancelled) setApiStatus("offline");
+        if (cancelled) return;
+        setApiStatus("offline");
+        if (attempt < 8) {
+          checkTimer = setTimeout(() => void checkHealth(attempt + 1), 10_000 + attempt * 5_000);
+        }
       }
+    };
+
+    (async () => {
+      void checkHealth(1);
 
       try {
         const list = await api.listReviews();
@@ -308,6 +317,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true;
+      if (checkTimer) clearTimeout(checkTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

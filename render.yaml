@@ -12,11 +12,17 @@
 #      The API falls back to localhost:3000 until you set it — which is a
 #      partial-match risk if left unconfigured in production.
 #
-# Pricing: both services use FREE plans so no card is needed to deploy.
+# Pricing: all services use FREE plans so no card is needed to deploy.
 # Caveats of free plans: the web service spins down after ~15 min of
 # inactivity (first request may take 30-60s to cold start) and the free
 # Postgres DB expires after 30 days — renew or upgrade before the judging
 # window.
+#
+# Keep-alive: the API pings its own public URL (RENDER_EXTERNAL_URL, injected
+# by Render) via app/keepalive.py every 10 minutes, so the free instance never
+# spins down while a boot is in flight. A Render clock/cron job would keep it
+# alive even while asleep, but cron jobs require a paid plan (no free tier),
+# so self-ping is the free-tier equivalent here.
 databases:
   - name: evidenceos-db
     plan: free
@@ -36,6 +42,10 @@ services:
         value: production
       - key: RATE_LIMIT_PER_MINUTE
         value: "120"
+      - key: KEEPALIVE_INTERVAL
+        # Seconds between self-pings (see app/keepalive.py). 600 keeps the
+        # free instance under the ~15 min idle spin-down window.
+        value: "600"
       - key: DATABASE_URL
         fromDatabase:
           name: evidenceos-db
