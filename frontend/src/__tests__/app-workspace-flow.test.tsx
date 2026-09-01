@@ -126,6 +126,41 @@ describe("App — workspace switching and creation", () => {
     expect(within(screen.getByRole("dialog")).getByText("Activity")).toBeInTheDocument();
   });
 
+  it("paginates the activity feed", async () => {
+    render(<App />);
+
+    await screen.findByRole("combobox", { name: "Switch review" });
+    for (let index = 0; index < 16; index += 1) {
+      window.dispatchEvent(
+        new CustomEvent("evidenceos:tool-activity", {
+          detail: { tool: `search_literature ${index}`, status: "ok", detail: null },
+        }),
+      );
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle activity panel" }));
+    const dialog = within(screen.getByRole("dialog"));
+    await waitFor(() => expect(dialog.getByText(/Page 1 of 2/i)).toBeInTheDocument());
+
+    expect(dialog.getByText("Agent tool search_literature 15 succeeded.")).toBeInTheDocument();
+    expect(dialog.queryByText("Agent tool search_literature 0 succeeded.")).not.toBeInTheDocument();
+    expect(dialog.getAllByRole("listitem")).toHaveLength(15);
+
+    fireEvent.click(dialog.getByRole("button", { name: "Next" }));
+    expect(dialog.getByText(/Page 2 of 2/i)).toBeInTheDocument();
+    expect(dialog.getByText("Agent tool search_literature 0 succeeded.")).toBeInTheDocument();
+    expect(
+      dialog.queryByText("Agent tool search_literature 15 succeeded."),
+    ).not.toBeInTheDocument();
+    expect(dialog.getAllByRole("listitem")).toHaveLength(1);
+    expect(dialog.getByRole("button", { name: "Next" })).toBeDisabled();
+
+    fireEvent.click(dialog.getByRole("button", { name: "Previous" }));
+    expect(dialog.getByText(/Page 1 of 2/i)).toBeInTheDocument();
+    expect(dialog.getByRole("button", { name: "Previous" })).toBeDisabled();
+    expect(dialog.getAllByRole("listitem")).toHaveLength(15);
+  });
+
   it("switches the workspace when the agent selects a review", async () => {
     render(<App />);
 
