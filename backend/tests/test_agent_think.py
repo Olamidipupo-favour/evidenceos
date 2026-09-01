@@ -7,6 +7,8 @@ call is made; the deterministic ``MockAgentClient`` is exercised directly to
 prove that decisions are driven by the transcript's actual tool outputs.
 """
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -15,6 +17,7 @@ from app.integrations.agent import (
     AgentProviderError,
     AgentUnavailableError,
     MockAgentClient,
+    OpenAICompatibleAgentClient,
     build_think_messages,
     parse_decision,
 )
@@ -357,3 +360,108 @@ class TestMockPlanner:
         # The primary paper is never removed: it stays in the matrix.
         cleanup = [m for m in messages if m.tool_call_id == "remove_paper_from_review"]
         assert cleanup[-1].content == f'{{"review_id": "{self.REVIEW_ID}", "paper_id": "pap-2"}}'
+
+
+class _FakeStreamResponse:
+    def __init__(self, lines: list[str]) -> None:
+        self.status_code = 200
+        self._lines = lines
+
+    def read(self) -> bytes:
+        return b""
+
+    def iter_lines(self) -> list[str]:
+        return self._lines
+
+
+class _FakeResponseContext:
+    def __init__(self, response: _FakeStreamResponse) -> None:
+        self._response = response
+
+    def __enter__(self) -> _FakeStreamResponse:
+        return self._response
+
+    def __exit__(self, *exc) -> bool:  # noqa: ANN002
+        return False
+
+
+class _FakeStreamingHttp:
+    """Stand-in for ``httpx.Client`` recording the outgoing payload."""
+
+    def __init__(self, lines: list[str]) -> None:
+        self._lines = lines
+        self.last_payload: dict | None = None
+
+    def stream(self, method, url, *, headers, json):  # noqa: ANN001
+        self.last_payload = json
+        return _FakeResponseContext(_FakeStreamResponse(self._lines))
+
+
+class TestOpenAIStreamingClient:
+    def _client(self, http) -> OpenAICompatibleAgentClient:
+        return OpenAICompatibleAgentClient(
+            api_key="sk-test",
+            base_url="https://example.com/v1",
+            model="reasoner",
+            timeout=5.0,
+            http=http,  # type: ignore[arg-type]
+        )
+
+    def _request(self) -> AgentThinkRequest:
+        return AgentThinkRequest(**_request())
+
+    @staticmethod
+    def _sse(delta: dict) -> str:
+        return "data: " + json.dumps({"choices": [{"delta": delta}]})
+
+    def test_reads_reasoning_content_and_content_into_one_decision(self) -> None:
+        # Reasoning-style model: emits reasoning in reasoning_content, then the
+        # JSON decision in content. The client must stream BOTH and still parse.
+        http = _FakeStreamingHttp(
+            [
+                self._sse({"reasoning_content": "I should search PubMed for candidates."}),
+                self._sse({"reasoning_content": " Let me pick a query."}),
+                self._sse(
+                    {
+                        "content": '{"tool": "search_literature", '
+                        '"arguments": {"query": "metformin", "page_size": 6}}'
+                    }
+                ),
+                "data: [DONE]",
+            ]
+        )
+        client = self._client(http)
+
+        events = list(client.think(self._request()))
+        kinds = [kind for kind, _ in events]
+        assert kinds == ["thought", "thought", "thought", "decision"]
+        # The decision must survive even though most tokens were reasoning.
+        decision = events[-1][1]
+        assert decision.tool == "search_literature"
+        assert decision.arguments == {"query": "metformin", "page_size": 6}
+        # The payload asks for enough budget for reasoning + the JSON decision.
+        assert http.last_payload is not None
+        assert http.last_payload["max_tokens"] == 4096
+
+    def test_decision_inside_reasoning_content_is_recovered(self) -> None:
+        # Some reasoning providers never emit `content`; the decision lives in
+        # the reasoning stream itself. It must still be parsed.
+        http = _FakeStreamingHttp(
+            [
+                self._sse({"reasoning_content": "Next tool needed: "}),
+                self._sse({"reasoning_content": '{"done": true, "summary": "All done"}'}),
+                "data: [DONE]",
+            ]
+        )
+        client = self._client(http)
+
+        events = list(client.think(self._request()))
+        decision = events[-1][1]
+        assert decision.done is True
+        assert decision.summary == "All done"
+
+    def test_empty_stream_raises_a_clear_error(self) -> None:
+        http = _FakeStreamingHttp(["data: [DONE]"])
+        client = self._client(http)
+        with pytest.raises(AgentProviderError, match="empty stream"):
+            list(client.think(self._request()))

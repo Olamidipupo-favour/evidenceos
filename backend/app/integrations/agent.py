@@ -248,7 +248,9 @@ class OpenAICompatibleAgentClient(LLMAgentClient):
             "model": self.model,
             "messages": build_think_messages(request),
             "temperature": 0.7,
-            "max_tokens": 1024,
+            # Reasoning-style models burn a lot of budget before the final
+            # decision; 1024 tokens would leave the JSON starved.
+            "max_tokens": 4096,
             "stream": True,
         }
         headers: dict[str, str] = {
@@ -297,12 +299,22 @@ class OpenAICompatibleAgentClient(LLMAgentClient):
                         delta = event["choices"][0]["delta"]
                     except KeyError, IndexError, TypeError:
                         continue
-                    token = delta.get("content")
+                    # Reasoning-focused providers (e.g. DeepSeek* R1-style models)
+                    # stream their visible output in `reasoning_content`; the
+                    # plain `content` field often stays empty and the decision
+                    # JSON can live in EITHER field. Surface both as thought
+                    # tokens so the feed stays alive and the parse never starves.
+                    token = delta.get("content") or delta.get("reasoning_content")
                     if token:
                         buffer.append(token)
                         yield ("thought", token)
         except httpx.RequestError as exc:
             raise AgentProviderError(f"could not reach the LLM provider: {exc}") from exc
+
+        if not buffer:
+            raise AgentProviderError(
+                "The planner returned an empty stream (no output tokens). Try again."
+            )
 
         decision = parse_decision("".join(buffer), tool_names)
         yield ("decision", decision)

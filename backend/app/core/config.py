@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     llm_api_key: str | None = None
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o-mini"
-    llm_timeout: float = 60.0
+    llm_timeout: float = 120.0
     # Some OpenAI-compatible gateways reject requests unless a specific
     # User-Agent (client fingerprint) is sent. Empty by default.
     llm_user_agent: str | None = None
