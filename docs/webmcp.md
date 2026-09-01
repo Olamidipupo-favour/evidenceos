@@ -44,9 +44,8 @@ This is "agent + human on the same artifact", not a chatbot bolted on.
 - Definitions & schemas: `webmcp/schemas/*.schema.json` + `webmcp/src/tools.ts`.
 - Registration + visibility layer: `frontend/src/lib/webmcp/registry.ts`
   (feature detection, single-flight registration, a cap-60 call feed mirrored
-  into the **Agent Actions** panel, and a full end-to-end demonstration
-  workflow that runs every tool through the browser's real `getTools()` /
-  `executeTool()`).
+  into the **Agent Actions** panel, and an agent orchestrator run that drives the
+  real `getTools()` / `executeTool()`).
 - Executors: `frontend/src/lib/webmcp/executors.ts` — every tool calls the same
   backend API the human UI uses (`frontend/src/lib/api.ts`), staying API-driven
   and never duplicating logic.
@@ -55,7 +54,7 @@ This is "agent + human on the same artifact", not a chatbot bolted on.
   patterns/lengths, numeric bounds, arrays, `oneOf`/`anyOf`) applied before any
   execution.
 - The `description` field is treated as a prompt: "Use when …" phrasing tells
-  the agent *when* to invoke the tool.
+  the agent _when_ to invoke the tool.
 
 ## Safety rules (non-negotiable)
 
@@ -87,10 +86,16 @@ This is "agent + human on the same artifact", not a chatbot bolted on.
   `EventTarget`), and console component tests for both the supported and
   degraded states.
 - Live: the **Agent Actions** panel ("agent actions" button in the header) shows
-  registration status, the registered tools, and every execution; the
-  *Run demonstration workflow* button replays the full 8-tool flow against the
-  live backend through WebMCP. Requires WebMCP-capable Chromium
-  (`#enable-webmcp-testing` or the origin trial).
+  registration status, the registered tools, and every execution. The _Run
+  agent_ button starts the LLM-driven orchestrator (`agent.ts` +
+  `backend: POST /api/agent/think`, SSE): the planner reasons aloud — thoughts
+  stream into the feed token by token — and chooses each tool call itself,
+  following the active review's research question so the matrix fills up live.
+  The orchestrator only validates and executes the choice; failures and illegal
+  tool picks are fed back to the planner so it adapts, capped at 12 steps. It
+  only creates a review (and activates it) when no review exists yet, so
+  workspaces are never polluted with a throwaway demo review. Requires
+  WebMCP-capable Chromium (`#enable-webmcp-testing` or the origin trial).
 
 ## References
 

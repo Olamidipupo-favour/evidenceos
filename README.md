@@ -25,8 +25,10 @@ artifacts via structured browser tools.
 ├── backend/    FastAPI service — port 8000
 ├── webmcp/     WebMCP tool contract types + JSON Schemas
 ├── database/   PostgreSQL schema + Alembic migration entrypoint
-├── docs/       architecture.md · webmcp.md
-└── scripts/    setup.sh · dev.sh
+├── docs/       architecture.md · webmcp.md · deployment.md
+├── scripts/    setup.sh · dev.sh
+├── render.yaml Render blueprint (API + managed Postgres)
+└── vercel.json Frontend deployment config (Vercel)
 ```
 
 ## Prerequisites
@@ -65,18 +67,27 @@ npm run dev:frontend  # Next.js on :3000
 
 ## Environment variables
 
-| Var                   | Where                 | Default                     | Purpose                             |
-| --------------------- | --------------------- | --------------------------- | ----------------------------------- |
-| `APP_NAME`            | `backend/.env`        | `EvidenceOS API`            | API display name                    |
-| `APP_ENV`             | `backend/.env`        | `development`               | Runtime environment                 |
-| `CORS_ORIGINS`        | `backend/.env`        | `["http://localhost:3000"]` | JSON list of allowed origins        |
-| `DATABASE_URL`        | `backend/.env`        | local dev Postgres          | SQLAlchemy URL for the app database |
-| `NEXT_PUBLIC_API_URL` | `frontend/.env.local` | `http://localhost:8000`     | Backend base URL for the frontend   |
+| Var                     | Where                 | Default                     | Purpose                               |
+| ----------------------- | --------------------- | --------------------------- | ------------------------------------- |
+| `APP_NAME`              | `backend/.env`        | `EvidenceOS API`            | API display name                      |
+| `APP_ENV`               | `backend/.env`        | `development`               | Runtime environment                   |
+| `CORS_ORIGINS`          | `backend/.env`        | `["http://localhost:3000"]` | JSON list of allowed origins          |
+| `DATABASE_URL`          | `backend/.env`        | local dev Postgres          | SQLAlchemy URL for the app database   |
+| `RATE_LIMIT_PER_MINUTE` | `backend/.env`        | `120`                       | Per-IP limit for `/api`; `0` disables |
+| `NEXT_PUBLIC_API_URL`   | `frontend/.env.local` | `http://localhost:8000`     | Backend base URL for the frontend     |
 
 The database must be running before the API starts
 (`make -C backend db-up`). Placeholder config for the upcoming pieces
 (PUBMED ids) is documented in the examples. **Never commit real secrets —
 `.env*` files are git-ignored.**
+
+A deterministic demo review (2 public papers with curated evidence) can be
+seeded at any time — this is what a deployed instance provisions on boot:
+
+```sh
+make -C backend db-seed        # idempotent upsert
+make -C backend db-seed-reset  # tear down + recreate
+```
 
 ## Commands
 
@@ -105,11 +116,21 @@ See [docs/webmcp.md](docs/webmcp.md) for the strategy and
   handlers call the same backend API the UI uses.
 - Every execution is mirrored into the **Agent actions** panel (header button):
   registration status, registered tools, and a live call feed with inputs,
-  outputs, and errors, plus a _Run demonstration workflow_ button that replays
-  the full 8-tool flow over real WebMCP.
+  outputs, and errors, plus a _Run agent_ button that starts the LLM-driven
+  orchestrator. The planner reasons aloud — its thoughts stream into the feed
+  token by token — and decides each tool call itself over real WebMCP.
+  Tool executions also stream into the header **Activity** panel in real time.
 - Read-only tools set `annotations.readOnlyHint: true`; mutations are annotated
   `false` and remain visible/auditable in the human UI.
 - Progressive enhancement: no WebMCP browser support → plain human UI.
+
+## Deployment
+
+The stack deploys to **Render** (API + managed Postgres, via `render.yaml`) and
+**Vercel** (frontend, via `vercel.json`). The API runs migrations and seeds the
+deterministic demo review on every boot, so a fresh deploy is immediately
+demo-ready. See **[docs/deployment.md](docs/deployment.md)** for exact steps,
+the env vars you must set, and the judging walkthrough.
 
 ## License
 

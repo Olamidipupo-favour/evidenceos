@@ -5,7 +5,7 @@
 EvidenceOS is an **agent-native medical research workspace**. Humans and AI
 agents work the same research surface: search biomedical literature, screen
 papers, build evidence reviews, and inspect structured evidence matrices.
-Agents interact with the *live application* through **WebMCP**-registered
+Agents interact with the _live application_ through **WebMCP**-registered
 tools rather than through a side-channel chatbot.
 
 ## Repo layout
