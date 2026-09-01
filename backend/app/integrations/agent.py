@@ -293,9 +293,9 @@ class OpenAICompatibleAgentClient(LLMAgentClient):
                     if not line:
                         continue
                     if raw_lines:
-                        raw_tail = [line[:200]]
+                        raw_tail = [line[:2000]]
                     else:
-                        raw_head.append(line[:200])
+                        raw_head.append(line[:2000])
                         raw_lines.append(line)
                     payload = _sse_line(line)
                     if payload is None:
@@ -327,7 +327,7 @@ class OpenAICompatibleAgentClient(LLMAgentClient):
             raise AgentProviderError(
                 "The planner returned an empty stream (no output tokens). Try again. "
                 f"(provider={self.model}, url={self._base_url}, data_events={raw_count}, "
-                f"raw_lines={snippet[:1200]})"
+                f"raw_lines={snippet[:6000]})"
             )
 
         decision = parse_decision("".join(buffer), tool_names)
