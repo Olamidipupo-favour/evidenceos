@@ -15,13 +15,15 @@ router = APIRouter(tags=["health"])
 def health() -> dict[str, object]:
     """Return service liveness status."""
     settings = get_settings()
+    key = settings.llm_api_key or ""
     return {
         "status": "ok",
         "llm": {
             "provider": settings.llm_provider,
             "model": settings.llm_model,
             "base_url": settings.llm_base_url,
-            "api_key_set": bool(settings.llm_api_key),
+            "api_key_set": bool(key),
+            "api_key_suffix": key[-4:] if key else None,
             "user_agent": settings.llm_user_agent,
         },
     }

@@ -16,6 +16,7 @@ def test_health_returns_ok() -> None:
     assert "model" in body["llm"]
     assert "base_url" in body["llm"]
     assert "api_key_set" in body["llm"]
+    assert "api_key_suffix" in body["llm"]
 
 
 def test_readiness_reports_database_ok() -> None:
