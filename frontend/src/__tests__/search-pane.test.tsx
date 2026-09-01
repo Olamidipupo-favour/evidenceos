@@ -81,4 +81,27 @@ describe("SearchPane", () => {
 
     expect(await screen.findByText("Find primary studies")).toBeInTheDocument();
   });
+
+  it("clears the query and results with the Clear button", async () => {
+    render(
+      <WorkspaceProvider>
+        <SearchPane />
+      </WorkspaceProvider>,
+    );
+
+    const input = screen.getByRole("searchbox");
+    fireEvent.change(input, { target: { value: "metformin type 2 diabetes" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    expect(
+      await screen.findByText(/Effect of intensive blood-glucose control/i),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear search results" }));
+
+    expect(await screen.findByText("Find primary studies")).toBeInTheDocument();
+    expect(input).toHaveValue("");
+    expect(screen.queryByRole("button", { name: "Clear search results" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/results · page/i)).not.toBeInTheDocument();
+  });
 });

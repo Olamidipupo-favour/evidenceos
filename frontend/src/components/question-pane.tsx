@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useWorkspace } from "@/lib/workspace";
 
+const NEW_WORKSPACE_VALUE = "__new_workspace__";
+
 export function QuestionPane() {
   const {
     activeReview,
@@ -16,14 +18,33 @@ export function QuestionPane() {
     reviews,
     selectReview,
     deleteReview,
+    creatingReview,
+    startCreateReview,
     saveQuestion,
     questionDraft,
   } = useWorkspace();
   const [draft, setDraft] = useState(questionDraft);
   const [saved, setSaved] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [loadedReviewId, setLoadedReviewId] = useState<string | null>(activeReviewId);
 
   const dirty = draft !== questionDraft;
+
+  // Follow the active workspace: when the active review changes, load that
+  // review's research question into the editor instead of keeping the old one.
+  if (activeReviewId !== loadedReviewId) {
+    setLoadedReviewId(activeReviewId);
+    setDraft(questionDraft);
+    setSaved(false);
+  }
+
+  const handleSwitch = (value: string) => {
+    if (value === NEW_WORKSPACE_VALUE) {
+      startCreateReview();
+      return;
+    }
+    selectReview(value);
+  };
 
   const handleSave = async () => {
     await saveQuestion(draft);
@@ -54,10 +75,11 @@ export function QuestionPane() {
           <div className="flex items-center gap-2">
             <select
               aria-label="Switch review"
-              value={activeReviewId ?? ""}
-              onChange={(event) => selectReview(event.target.value)}
+              value={creatingReview ? NEW_WORKSPACE_VALUE : (activeReviewId ?? "")}
+              onChange={(event) => handleSwitch(event.target.value)}
               className="h-8 max-w-[11rem] rounded-lg border border-input bg-card px-2 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
             >
+              <option value={NEW_WORKSPACE_VALUE}>+ New workspace…</option>
               {reviews.map((review) => (
                 <option key={review.id} value={review.id}>
                   {review.title}
@@ -104,8 +126,8 @@ export function QuestionPane() {
         <p className="flex items-start gap-1.5 text-[0.6875rem] leading-relaxed text-muted-foreground/80">
           <Plus className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
           <span>
-            New reviews are created on the landing card; the active review is remembered between
-            visits.
+            Choose “New workspace…” in the switch above to start another review; the active review
+            is remembered between visits.
           </span>
         </p>
       </CardContent>

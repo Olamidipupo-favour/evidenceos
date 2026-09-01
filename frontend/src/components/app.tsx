@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { Bot, FileSearch, PanelRight } from "lucide-react";
+import { ArrowLeft, Bot, FileSearch, PanelRight } from "lucide-react";
 
 import { AgentActivity } from "@/components/agent-activity";
 import { ApiStatusPill } from "@/components/api-status";
@@ -14,16 +14,18 @@ import { ReviewCreate } from "@/components/review-create";
 import { SearchPane } from "@/components/search-pane";
 import { Stepper } from "@/components/stepper";
 import { WebmcpConsole } from "@/components/webmcp-console";
+import { WebmcpStatusNotice } from "@/components/webmcp-status";
 import { WorkspacePane } from "@/components/workspace-pane";
 import { WorkspaceProvider, useWorkspace } from "@/lib/workspace";
 import { ensureRegistered } from "@/lib/webmcp/registry";
 
 function Shell() {
-  const { apiStatus, reviews, reach } = useWorkspace();
+  const { apiStatus, reviews, reach, creatingReview, cancelCreateReview } = useWorkspace();
   const [activityOpen, setActivityOpen] = useState(false);
   const [agentActionsOpen, setAgentActionsOpen] = useState(false);
 
   const hasReview = reviews.length > 0;
+  const showCreate = !hasReview || creatingReview;
 
   return (
     <div className="min-h-dvh bg-background text-foreground">
@@ -52,7 +54,7 @@ function Shell() {
               size="sm"
               onClick={() => setActivityOpen((open) => !open)}
               aria-expanded={activityOpen}
-              aria-label="Toggle agent activity panel"
+              aria-label="Toggle activity panel"
               className={activityOpen ? "text-signal" : ""}
             >
               <PanelRight className="size-3.5" aria-hidden="true" />
@@ -77,8 +79,22 @@ function Shell() {
       </header>
 
       <main className="mx-auto w-full max-w-[1400px] px-4 py-6 lg:px-6">
-        {!hasReview ? (
+        <WebmcpStatusNotice onOpenActions={() => setAgentActionsOpen(true)} />
+        {showCreate ? (
           <>
+            {creatingReview && hasReview ? (
+              <div className="mb-4">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={cancelCreateReview}
+                  className="text-muted-foreground"
+                >
+                  <ArrowLeft className="size-3.5" aria-hidden="true" />
+                  Back to current review
+                </Button>
+              </div>
+            ) : null}
             <div className="mb-10">
               <ReviewCreate />
             </div>

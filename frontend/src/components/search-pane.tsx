@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 
-import { ChevronLeft, ChevronRight, Search, SearchX } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, SearchX, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,16 +39,31 @@ export function SearchPane() {
     searchLoading,
     searchError,
     runSearch,
+    clearSearch,
     goToPage,
     matrix,
     addPaperToReview,
     openPaper,
   } = useWorkspace();
-  const [text, setText] = useState("");
+  const [text, setText] = useState(query);
+  const [prevQuery, setPrevQuery] = useState(query);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     void runSearch(text);
+  };
+
+  // Keep the box in sync with the active query (example chips, agent-driven
+  // searches, workspace switches). Reset during render so typing is never
+  // clobbered by an effect.
+  if (query !== prevQuery) {
+    setPrevQuery(query);
+    setText(query);
+  }
+
+  const handleClear = () => {
+    clearSearch();
+    setText("");
   };
 
   const maxPages = Math.max(1, Math.ceil(searchTotal / PAGE_SIZE));
@@ -84,6 +99,20 @@ export function SearchPane() {
           <Button type="submit" disabled={!text.trim() || searchLoading}>
             {searchLoading ? "Searching…" : "Search"}
           </Button>
+          {(hasSearched || text) && !searchLoading ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9"
+              onClick={handleClear}
+              aria-label="Clear search results"
+              title="Cancel the current query and clear all results"
+            >
+              <X className="size-3.5" aria-hidden="true" />
+              Clear
+            </Button>
+          ) : null}
         </form>
 
         <div className="flex flex-wrap items-center gap-1.5">

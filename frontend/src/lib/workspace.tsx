@@ -23,6 +23,8 @@ import type {
 } from "@/lib/types";
 
 const ACTIVE_REVIEW_KEY = "evidenceos:activeReviewId";
+const ACTIVITY_KEY = "evidenceos:activity";
+const MAX_ACTIVITY = 60;
 
 function storageGet(key: string): string | null {
   if (typeof window === "undefined") return null;
@@ -46,6 +48,18 @@ function storageRemove(key: string): void {
     window.localStorage.removeItem(key);
   } catch {
     // Ignore.
+  }
+}
+
+/** Restore the persisted activity trail (survives reloads). */
+function loadPersistedActivity(): ActivityEntry[] {
+  const raw = storageGet(ACTIVITY_KEY);
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as ActivityEntry[]).slice(0, MAX_ACTIVITY) : [];
+  } catch {
+    return [];
   }
 }
 
@@ -78,9 +92,13 @@ interface WorkspaceState {
   createReview: (title: string, researchQuestion: string | null) => Promise<boolean>;
   selectReview: (id: string) => void;
   deleteReview: (id: string) => Promise<void>;
+  creatingReview: boolean;
+  startCreateReview: () => void;
+  cancelCreateReview: () => void;
   saveQuestion: (question: string) => Promise<void>;
   runSearch: (query: string) => Promise<void>;
   goToPage: (page: number) => Promise<void>;
+  clearSearch: () => void;
   addPaperToReview: (paper: LiteraturePaper) => Promise<void>;
   removePaper: (paperId: string) => Promise<void>;
   setScreening: (paperId: string, status: ScreeningStatus) => Promise<void>;
@@ -119,6 +137,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
   const [reviews, setReviews] = useState<Review[]>([]);
   const [activeReviewId, setActiveReviewId] = useState<string | null>(null);
+  const [creatingReview, setCreatingReview] = useState(false);
   const [questionDraft, setQuestionDraft] = useState("");
   const [matrix, setMatrix] = useState<ReviewMatrix | null>(null);
   const [matrixLoading, setMatrixLoading] = useState(false);
@@ -140,10 +159,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [paperEvidenceError, setPaperEvidenceError] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [extractionError, setExtractionError] = useState<string | null>(null);
-  const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [activity, setActivity] = useState<ActivityEntry[]>(loadPersistedActivity);
 
   const activeReviewIdRef = useRef<string | null>(null);
+  const previousReviewIdRef = useRef<string | null>(null);
   const detailPaperRef = useRef<LiteraturePaper | null>(null);
+  const searchControllerRef = useRef<AbortController | null>(null);
   const persisted = storageGet(ACTIVE_REVIEW_KEY);
 
   useEffect(() => {
@@ -152,7 +173,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const pushActivity = useCallback((entry: Omit<ActivityEntry, "id" | "at">) => {
     const full: ActivityEntry = { ...entry, id: nextId(), at: new Date().toISOString() };
-    setActivity((prev) => [full, ...prev].slice(0, 60));
+    setActivity((prev) => {
+      const next = [full, ...prev].slice(0, MAX_ACTIVITY);
+      storageSet(ACTIVITY_KEY, JSON.stringify(next));
+      return next;
+    });
   }, []);
 
   const loadMatrix = useCallback(async (reviewId: string) => {
@@ -173,21 +198,59 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (id) await loadMatrix(id);
   }, [loadMatrix]);
 
-  // When a WebMCP tool (or any other writer) mutates data out-of-band,
-  // re-read the reviews + matrix so the live UI reflects the change.
+  // When a WebMCP tool (or any other writer) mutates data out-of-band, re-read
+  // the reviews + matrix so the live UI reflects the change. If the active
+  // review no longer exists (an agent deleted it), fall back to the first
+  // remaining review so the workspace never points at a deleted context.
   useEffect(() => {
-    const onDataChanged = () => {
-      void refreshMatrix();
-      api
-        .listReviews()
-        .then(setReviews)
-        .catch(() => {
-          // API offline — the matrix refresh already surfaces the failure.
-        });
+    const onDataChanged = async () => {
+      try {
+        const list = await api.listReviews();
+        setReviews(list);
+        let next = activeReviewIdRef.current;
+        if (!next || !list.some((r) => r.id === next)) {
+          next = list[0]?.id ?? null;
+          setActiveReviewId(next);
+          if (next) storageSet(ACTIVE_REVIEW_KEY, next);
+          else storageRemove(ACTIVE_REVIEW_KEY);
+        }
+        const review = next ? list.find((r) => r.id === next) : null;
+        setQuestionDraft(review?.research_question ?? "");
+        if (next) void loadMatrix(next);
+        else setMatrix(null);
+      } catch {
+        // API offline — the matrix refresh already surfaces the failure.
+      }
     };
+
+    // Mirror agent tool executions into the human "Agent activity" panel so
+    // MCP-driven work stays visible in real time alongside manual actions.
+    const onToolActivity = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          tool: string;
+          status: "ok" | "error";
+          detail: string | null;
+        }>
+      ).detail;
+      if (!detail?.tool) return;
+      pushActivity({
+        kind: "tool",
+        tone: detail.status === "ok" ? "neutral" : "warning",
+        message:
+          detail.status === "ok"
+            ? `Agent tool ${detail.tool} succeeded.`
+            : `Agent tool ${detail.tool} failed${detail.detail ? `: ${detail.detail}` : "."}`,
+      });
+    };
+
     window.addEventListener("evidenceos:data-changed", onDataChanged);
-    return () => window.removeEventListener("evidenceos:data-changed", onDataChanged);
-  }, [refreshMatrix]);
+    window.addEventListener("evidenceos:tool-activity", onToolActivity);
+    return () => {
+      window.removeEventListener("evidenceos:data-changed", onDataChanged);
+      window.removeEventListener("evidenceos:tool-activity", onToolActivity);
+    };
+  }, [pushActivity, loadMatrix]);
 
   const loadPaperEvidence = useCallback(async (pmid: number) => {
     setPaperEvidenceLoading(true);
@@ -321,6 +384,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setActiveReviewId(review.id);
         storageSet(ACTIVE_REVIEW_KEY, review.id);
         setQuestionDraft(researchQuestion ?? "");
+        setCreatingReview(false);
+        previousReviewIdRef.current = null;
         pushActivity({
           kind: "review",
           message: `Created review "${title}".`,
@@ -343,30 +408,74 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     (id: string) => {
       setActiveReviewId(id);
       storageSet(ACTIVE_REVIEW_KEY, id);
+      setCreatingReview(false);
+      previousReviewIdRef.current = null;
       const review = reviews.find((r) => r.id === id);
       setQuestionDraft(review?.research_question ?? "");
-      const count = matrix?.total_papers ?? 0;
       pushActivity({
         kind: "review",
-        message:
-          count > 0
-            ? `Opened "${review?.title ?? "review"}" with ${count} paper${count === 1 ? "" : "s"}.`
-            : `Opened "${review?.title ?? "review"}".`,
+        message: `Opened "${review?.title ?? "review"}".`,
         tone: "neutral",
       });
     },
-    [reviews, matrix, pushActivity],
+    [reviews, pushActivity],
   );
+
+  const startCreateReview = useCallback(() => {
+    previousReviewIdRef.current = activeReviewId;
+    setCreatingReview(true);
+    setMatrix(null);
+    setMatrixError(null);
+  }, [activeReviewId]);
+
+  const cancelCreateReview = useCallback(() => {
+    setCreatingReview(false);
+    const previous = previousReviewIdRef.current;
+    previousReviewIdRef.current = null;
+    if (!previous) return;
+    setActiveReviewId(previous);
+    storageSet(ACTIVE_REVIEW_KEY, previous);
+    const review = reviews.find((r) => r.id === previous);
+    setQuestionDraft(review?.research_question ?? "");
+  }, [reviews]);
+
+  // The WebMCP workflow selects its fresh review so the judge watches the
+  // matrix fill up live instead of mutating an invisible throwaway workspace.
+  useEffect(() => {
+    const onSelectReview = (event: Event) => {
+      const reviewId = (event as CustomEvent<{ reviewId?: string }>).detail?.reviewId;
+      if (reviewId) selectReview(reviewId);
+    };
+    window.addEventListener("evidenceos:select-review", onSelectReview);
+    return () => window.removeEventListener("evidenceos:select-review", onSelectReview);
+  }, [selectReview]);
 
   const deleteReview = useCallback(
     async (id: string) => {
       try {
         await api.deleteReview(id);
-        setReviews((prev) => prev.filter((r) => r.id !== id));
-        storageRemove(ACTIVE_REVIEW_KEY);
-        setActiveReviewId(null);
-        setMatrix(null);
-        pushActivity({ kind: "review", message: "Review deleted.", tone: "neutral" });
+        const remaining = reviews.filter((r) => r.id !== id);
+        const next = remaining[0]?.id ?? null;
+        setReviews(remaining);
+        setCreatingReview(false);
+        previousReviewIdRef.current = null;
+        if (next) {
+          const review = remaining.find((r) => r.id === next);
+          setActiveReviewId(next);
+          setQuestionDraft(review?.research_question ?? "");
+          storageSet(ACTIVE_REVIEW_KEY, next);
+          pushActivity({
+            kind: "review",
+            message: `Review deleted. Switched to "${review?.title ?? "next review"}".`,
+            tone: "neutral",
+          });
+        } else {
+          setActiveReviewId(null);
+          setQuestionDraft("");
+          setMatrix(null);
+          storageRemove(ACTIVE_REVIEW_KEY);
+          pushActivity({ kind: "review", message: "Review deleted.", tone: "neutral" });
+        }
       } catch (error) {
         pushActivity({
           kind: "review",
@@ -375,7 +484,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [pushActivity],
+    [reviews, pushActivity],
   );
 
   const saveQuestion = useCallback(
@@ -405,11 +514,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     async (searchQuery: string) => {
       const trimmed = searchQuery.trim();
       if (!trimmed) return;
+      searchControllerRef.current?.abort();
+      const controller = new AbortController();
+      searchControllerRef.current = controller;
       setQuery(trimmed);
       setSearchLoading(true);
       setSearchError(null);
       try {
-        const data = await api.searchLiterature({ q: trimmed, page: 1, page_size: 25 });
+        const data = await api.searchLiterature(
+          { q: trimmed, page: 1, page_size: 25 },
+          controller.signal,
+        );
         setSearchResults(data.items);
         setSearchTotal(data.total);
         setSearchPage(1);
@@ -423,13 +538,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           tone: data.total > 0 ? "neutral" : "warning",
         });
       } catch (error) {
+        if (controller.signal.aborted) {
+          setSearchLoading(false);
+          return;
+        }
         setSearchResults([]);
         setSearchTotal(0);
         setSearchError(
           error instanceof Error ? error.message : "Search failed. The API may be offline.",
         );
       } finally {
-        setSearchLoading(false);
+        if (!controller.signal.aborted) setSearchLoading(false);
       }
     },
     [pushActivity],
@@ -437,23 +556,44 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const goToPage = useCallback(
     async (page: number) => {
+      searchControllerRef.current?.abort();
+      const controller = new AbortController();
+      searchControllerRef.current = controller;
       setSearchLoading(true);
       setSearchError(null);
       try {
-        const data = await api.searchLiterature({ q: query, page, page_size: 25 });
+        const data = await api.searchLiterature(
+          { q: query, page, page_size: 25 },
+          controller.signal,
+        );
         setSearchResults(data.items);
         setSearchTotal(data.total);
         setSearchPage(page);
       } catch (error) {
+        if (controller.signal.aborted) {
+          setSearchLoading(false);
+          return;
+        }
         setSearchError(
           error instanceof Error ? error.message : "Could not load that page of results.",
         );
       } finally {
-        setSearchLoading(false);
+        if (!controller.signal.aborted) setSearchLoading(false);
       }
     },
     [query],
   );
+
+  const clearSearch = useCallback(() => {
+    searchControllerRef.current?.abort();
+    searchControllerRef.current = null;
+    setQuery("");
+    setSearchResults([]);
+    setSearchTotal(0);
+    setSearchPage(1);
+    setSearchError(null);
+    setSearchLoading(false);
+  }, []);
 
   const addPaperToReview = useCallback(
     async (paper: LiteraturePaper) => {
@@ -659,9 +799,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     createReview,
     selectReview,
     deleteReview,
+    creatingReview,
+    startCreateReview,
+    cancelCreateReview,
     saveQuestion,
     runSearch,
     goToPage,
+    clearSearch,
     addPaperToReview,
     removePaper,
     setScreening,
