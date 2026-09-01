@@ -322,12 +322,12 @@ class OpenAICompatibleAgentClient(LLMAgentClient):
             raise AgentProviderError(f"could not reach the LLM provider: {exc}") from exc
 
         if not buffer:
-            parts = (raw_head + ["…"] + raw_tail) if len(raw_lines) > 3 else raw_lines
+            parts = (raw_head[:5] + ["…"] + raw_tail) if len(raw_lines) > 5 else raw_lines
             snippet = "; ".join(parts)
             raise AgentProviderError(
                 "The planner returned an empty stream (no output tokens). Try again. "
                 f"(provider={self.model}, url={self._base_url}, data_events={raw_count}, "
-                f"raw_lines={snippet[:400]})"
+                f"raw_lines={snippet[:1200]})"
             )
 
         decision = parse_decision("".join(buffer), tool_names)
