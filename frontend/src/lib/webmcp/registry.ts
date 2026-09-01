@@ -459,7 +459,13 @@ function errorMessage(error: unknown): string {
  * agent operates on the review currently active in the workspace, searching
  * with its research question, and only creates a review when none exists.
  */
-export async function runDemonstration(): Promise<DemonstrationSummary> {
+export async function runDemonstration(options?: {
+  /**
+   * Ask the user before letting the planner run past the step budget. Resolve
+   * true to grant more steps, false to stop the run.
+   */
+  confirmContinue?: (stepsUsed: number) => Promise<boolean>;
+}): Promise<DemonstrationSummary> {
   const ctx = getModelContext();
   if (!ctx || !runtimeState || runtimeState.supported !== true) {
     throw new Error(
@@ -533,6 +539,7 @@ export async function runDemonstration(): Promise<DemonstrationSummary> {
       context,
       feed,
       execute: exec,
+      confirmContinue: options?.confirmContinue,
     });
 
     const summary: DemonstrationSummary = {

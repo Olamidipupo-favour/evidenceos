@@ -541,6 +541,58 @@ describe("registry — demonstration workflow", () => {
     expect(thoughtRows.length).toBeGreaterThanOrEqual(1);
     expect(thoughtRows.every((c) => c.status === "error")).toBe(true);
   });
+
+  it("blocks the planner from re-executing an identical mutation", async () => {
+    installFakeContext();
+    await ensureRegistered();
+
+    const script = [
+      {
+        thoughts: ["Adding the primary paper."],
+        decision: {
+          done: false,
+          tool: "add_paper_to_review",
+          arguments: { review_id: REVIEW_ID, pmid: 174596, status: "included" },
+        },
+      },
+      {
+        thoughts: ["Hmm — add it again just in case."],
+        decision: {
+          done: false,
+          tool: "add_paper_to_review",
+          arguments: { review_id: REVIEW_ID, pmid: 174596, status: "included" },
+        },
+      },
+      {
+        thoughts: ["The paper is already captured — done."],
+        decision: { done: true, summary: "Stopped repeating an identical mutation." },
+      },
+    ];
+
+    let thinkCalls = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/agent/think")) {
+        const step = script[thinkCalls];
+        thinkCalls += 1;
+        return thinkResponse(step!);
+      }
+      return backendResponder(url, init?.method ?? "GET");
+    });
+
+    const summary = await runDemonstration();
+
+    expect(summary.ok).toBe(true);
+    // The second, identical mutation was refused; only the first ran.
+    expect(summary.executed).toEqual(["add_paper_to_review"]);
+    expect(summary.steps).toBe(script.length);
+    expect(thinkCalls).toBe(script.length);
+
+    const calls = getToolCalls();
+    const adds = calls.filter((c) => c.kind === "tool" && c.tool === "add_paper_to_review");
+    expect(adds).toHaveLength(1);
+    expect(adds[0]?.status).toBe("ok");
+  });
 });
 
 describe("tool catalogue metadata", () => {

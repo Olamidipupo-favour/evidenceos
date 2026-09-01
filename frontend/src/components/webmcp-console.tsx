@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import {
   Bot,
@@ -44,6 +44,10 @@ export function WebmcpConsole({ open, onClose }: { open: boolean; onClose: () =>
   const [discovered, setDiscovered] = useState<string[] | null>(null);
   const [demo, setDemo] = useState<DemonstrationSummary | null>(null);
   const [demoBusy, setDemoBusy] = useState(false);
+  const [limitPrompt, setLimitPrompt] = useState<{
+    resolve: (continueRun: boolean) => void;
+    stepsUsed: number;
+  } | null>(null);
 
   useEffect(() => {
     // Registration is normally kicked off on page load (WebmcpHost), but be
@@ -68,7 +72,14 @@ export function WebmcpConsole({ open, onClose }: { open: boolean; onClose: () =>
     setDemoBusy(true);
     setDemo(null);
     try {
-      setDemo(await runDemonstration());
+      setDemo(
+        await runDemonstration({
+          // The planner hit the step budget and still isn't done — hand the
+          // decision to the user instead of silently failing.
+          confirmContinue: (stepsUsed) =>
+            new Promise<boolean>((resolve) => setLimitPrompt({ resolve, stepsUsed })),
+        }),
+      );
     } catch (error) {
       setDemo({ ok: false, executed: [], skipped: [], error: messageOf(error) });
     } finally {
@@ -118,13 +129,52 @@ export function WebmcpConsole({ open, onClose }: { open: boolean; onClose: () =>
           recent={demo}
           onRun={runDemo}
           onWatchFeed={scrollToFeed}
+          onStop={() => {
+            abortRunningAgent();
+            // A pending "continue?" prompt is resolved as stop too.
+            if (limitPrompt) {
+              limitPrompt.resolve(false);
+              setLimitPrompt(null);
+            }
+          }}
         />
+        {limitPrompt ? (
+          <div className="rounded-lg border border-status-excluded/30 bg-status-excluded/5 px-3 py-3">
+            <p className="text-sm font-medium text-foreground/90">
+              The agent has used {limitPrompt.stepsUsed} steps and isn&apos;t done yet.
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+              Continue letting the planner run, or stop here?
+            </p>
+            <div className="mt-2.5 flex items-center gap-2">
+              <Button
+                size="xs"
+                onClick={() => {
+                  limitPrompt.resolve(true);
+                  setLimitPrompt(null);
+                }}
+              >
+                Continue running
+              </Button>
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() => {
+                  limitPrompt.resolve(false);
+                  setLimitPrompt(null);
+                }}
+              >
+                Stop agent
+              </Button>
+            </div>
+          </div>
+        ) : null}
+        <CallsFeed calls={calls} />
         <ToolsSection
           runtime={runtime}
           discovered={discovered}
           onRefreshDiscovery={refreshDiscovery}
         />
-        <CallsFeed calls={calls} />
       </div>
     </Drawer>
   );
@@ -232,12 +282,14 @@ function RunDemoButton({
   recent,
   onRun,
   onWatchFeed,
+  onStop,
 }: {
   supported: boolean;
   busy: boolean;
   recent: DemonstrationSummary | null;
   onRun: () => void;
   onWatchFeed: () => void;
+  onStop: () => void;
 }) {
   return (
     <div className="rounded-lg border bg-card px-3 py-3">
@@ -255,7 +307,7 @@ function RunDemoButton({
             <Button
               size="sm"
               variant="outline"
-              onClick={() => abortRunningAgent()}
+              onClick={onStop}
               aria-label="Stop the running agent"
             >
               <Square className="size-3.5" aria-hidden="true" />
@@ -318,15 +370,35 @@ function ToolsSection({
   discovered: string[] | null;
   onRefreshDiscovery: () => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const listId = useId();
   const available = runtime?.supported === true ? runtime.registered : [];
 
   return (
     <section>
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          aria-controls={listId}
+          className="flex cursor-pointer items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+        >
           <ListOrdered className="size-3.5" aria-hidden="true" />
           Registered tools
-        </h3>
+          {available.length > 0 ? (
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[0.625rem] font-medium text-muted-foreground">
+              {available.length}
+            </span>
+          ) : null}
+          <ChevronDown
+            className={cn(
+              "size-3.5 text-muted-foreground transition-transform",
+              open && "rotate-180",
+            )}
+            aria-hidden="true"
+          />
+        </button>
         <button
           type="button"
           onClick={onRefreshDiscovery}
@@ -337,17 +409,19 @@ function ToolsSection({
         </button>
       </div>
 
-      {available.length === 0 ? (
-        <p className="rounded-md bg-muted/40 px-2.5 py-2 text-xs text-muted-foreground">
-          No tools are registered — WebMCP is not active in this browser.
-        </p>
-      ) : (
-        <ul className="divide-y divide-border/70 overflow-hidden rounded-lg border">
-          {available.map((entry) => (
-            <ToolRow key={entry.name} entry={entry} />
-          ))}
-        </ul>
-      )}
+      {open ? (
+        available.length === 0 ? (
+          <p className="rounded-md bg-muted/40 px-2.5 py-2 text-xs text-muted-foreground">
+            No tools are registered — WebMCP is not active in this browser.
+          </p>
+        ) : (
+          <ul id={listId} className="divide-y divide-border/70 overflow-hidden rounded-lg border">
+            {available.map((entry) => (
+              <ToolRow key={entry.name} entry={entry} />
+            ))}
+          </ul>
+        )
+      ) : null}
 
       {discovered !== null ? (
         <p className="mt-1.5 text-[0.6875rem] text-muted-foreground">
@@ -398,23 +472,48 @@ function ToolRow({ entry }: { entry: RegisteredContract }) {
 }
 
 function CallsFeed({ calls }: { calls: ToolCallRecord[] }) {
+  const [open, setOpen] = useState(true);
+
   return (
     <section id="webmcp-calls-feed">
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        aria-controls="webmcp-calls-feed-list"
+        className="mb-2 flex w-full cursor-pointer items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+      >
         Tool calls
-      </h3>
-      {calls.length === 0 ? (
-        <p className="rounded-md bg-muted/40 px-2.5 py-2 text-xs text-muted-foreground">
-          Nothing here yet. Run the agent to watch it think out loud and pick each tool, or see
-          calls from an external agent connected over WebMCP.
-        </p>
-      ) : (
-        <ul className="divide-y divide-border/70 overflow-hidden rounded-lg border">
-          {calls.map((call) => (
-            <CallRow key={call.id} call={call} />
-          ))}
-        </ul>
-      )}
+        {calls.length > 0 ? (
+          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[0.625rem] font-medium text-muted-foreground">
+            {calls.length}
+          </span>
+        ) : null}
+        <ChevronDown
+          className={cn(
+            "size-3.5 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
+          aria-hidden="true"
+        />
+      </button>
+      {open ? (
+        calls.length === 0 ? (
+          <p className="rounded-md bg-muted/40 px-2.5 py-2 text-xs text-muted-foreground">
+            Nothing here yet. Run the agent to watch it think out loud and pick each tool, or see
+            calls from an external agent connected over WebMCP.
+          </p>
+        ) : (
+          <ul
+            id="webmcp-calls-feed-list"
+            className="divide-y divide-border/70 overflow-hidden rounded-lg border"
+          >
+            {calls.map((call) => (
+              <CallRow key={call.id} call={call} />
+            ))}
+          </ul>
+        )
+      ) : null}
     </section>
   );
 }
@@ -466,36 +565,64 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Renders an "agent is thinking…" row whose text streams in token by token. */
+/**
+ * Renders an "agent is thinking…" row. Thoughts are usually long, so the row is
+ * collapsed to a single header line by default; the currently streaming thought
+ * stays expanded for a live look, then collapses itself once resolved.
+ */
 function ThoughtRow({ call }: { call: ToolCallRecord }) {
+  const [expanded, setExpanded] = useState(false);
+  const live = call.status === "running";
+  const open = expanded || live;
+
   return (
     <li className="px-3 py-2">
-      <div className="flex items-center gap-2">
-        <Lightbulb className="size-3.5 shrink-0 text-signal" aria-hidden="true" />
-        <Badge variant="signal" className="px-1.5 py-0 text-[0.625rem]">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={open}
+        aria-label={open ? "Collapse this thinking step" : "Expand this thinking step"}
+        className="flex w-full cursor-pointer items-center gap-2 text-left"
+      >
+        <Lightbulb
+          className={cn("size-3.5 shrink-0 text-signal", live && "animate-pulse")}
+          aria-hidden="true"
+        />
+        <Badge variant="signal" className="px-1.5 py-0 text-[0.6875rem]">
           thinking
         </Badge>
         <span className="ml-auto shrink-0 text-[0.6875rem] text-muted-foreground">
           {formatActivityTime(call.startedAt)}
         </span>
-      </div>
-      {call.result ? (
-        <p
+        <ChevronDown
           className={cn(
-            "mt-1 text-xs leading-relaxed text-muted-foreground",
-            call.status === "running" && call.result?.endsWith(" ") ? "animate-pulse" : "",
+            "size-3.5 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-180",
           )}
-        >
-          {call.result}
-          {call.status === "running" ? (
-            <span aria-hidden="true" className="-ml-0.5 inline-block animate-pulse">
-              ▍
-            </span>
-          ) : null}
-        </p>
-      ) : (
-        <p className="mt-1 text-xs italic text-muted-foreground">Planning the next step…</p>
-      )}
+          aria-hidden="true"
+        />
+      </button>
+      {open ? (
+        <div className="mt-1.5">
+          {call.result ? (
+            <p
+              className={cn(
+                "text-xs leading-relaxed text-muted-foreground",
+                live && call.result.endsWith(" ") ? "animate-pulse" : "",
+              )}
+            >
+              {call.result}
+              {live ? (
+                <span aria-hidden="true" className="-ml-0.5 inline-block animate-pulse">
+                  ▍
+                </span>
+              ) : null}
+            </p>
+          ) : (
+            <p className="text-xs italic text-muted-foreground">Planning the next step…</p>
+          )}
+        </div>
+      ) : null}
     </li>
   );
 }

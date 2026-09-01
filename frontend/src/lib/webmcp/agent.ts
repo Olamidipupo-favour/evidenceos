@@ -17,7 +17,7 @@
 import { API_URL } from "@/lib/api";
 import { validateInput } from "@/lib/webmcp/validate";
 
-const MAX_STEPS = 12;
+const MAX_STEPS = 18;
 
 export interface AgentToolInfo {
   name: string;
@@ -70,6 +70,12 @@ export interface AgentRunOptions {
   feed: AgentFeed;
   /** Execute a chosen tool through WebMCP; resolve with the output string. */
   execute: (tool: string, args: Record<string, unknown>) => Promise<string>;
+  /**
+   * Called when the planner reaches the step budget without finishing. Resolve
+   * true to grant another batch of steps, or false to stop the run. When
+   * omitted the run fails at the limit instead of prompting.
+   */
+  confirmContinue?: (stepsUsed: number) => Promise<boolean>;
 }
 
 export class AgentFailure extends Error {}
@@ -182,9 +188,26 @@ export async function runAgentWorkflow(opts: AgentRunOptions): Promise<AgentOutc
   const byName = new Map(opts.tools.map((tool) => [tool.name, tool]));
   let plannerRetries = 0;
   const MAX_PLANNER_RETRIES = 2;
+  const seenActions = new Set<string>();
+
+  const stepBudget = MAX_STEPS;
+  let allowedSteps = stepBudget;
+  let step = 0;
 
   try {
-    for (let step = 1; step <= MAX_STEPS; step += 1) {
+    for (;;) {
+      step += 1;
+      // The planner ran out of steps without finishing. If the caller offers a
+      // way to ask the user, use it; otherwise fail at the limit as before.
+      if (step > allowedSteps) {
+        if (!opts.confirmContinue) {
+          throw new AgentFailure(`The agent did not finish within ${allowedSteps} steps.`);
+        }
+        const more = await opts.confirmContinue(step - 1);
+        if (!more) throw new AgentStopped("Stopped by the user at the step limit.");
+        allowedSteps += stepBudget;
+      }
+
       const thoughtId = opts.feed.beginThought();
       let buffer = "";
       let decision: AgentDecision | null = null;
@@ -269,6 +292,23 @@ export async function runAgentWorkflow(opts: AgentRunOptions): Promise<AgentOutc
         continue;
       }
 
+      // Planners sometimes re-issue a mutation that already ran (e.g. adding a
+      // paper that is "already attached"). Rather than burn a step on it again,
+      // surface that and force the planner to move forward — read-only tools
+      // stay re-runnable so the planner can re-check state.
+      const actionKey = `${tool}\u0000${JSON.stringify(args)}`;
+      if (!byName.get(tool)!.read_only && seenActions.has(actionKey)) {
+        transcript.push({
+          role: "tool",
+          tool_call_id: tool,
+          content:
+            "That exact tool call was already executed earlier in this run. " +
+            "Do not repeat it — choose the next step or mark done instead.",
+        });
+        continue;
+      }
+      seenActions.add(actionKey);
+
       executed.push(tool);
       try {
         const output = await opts.execute(tool, args);
@@ -282,8 +322,6 @@ export async function runAgentWorkflow(opts: AgentRunOptions): Promise<AgentOutc
         });
       }
     }
-
-    throw new AgentFailure(`The agent did not finish within ${MAX_STEPS} steps.`);
   } finally {
     runningAbort = null;
   }
