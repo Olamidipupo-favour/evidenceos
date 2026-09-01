@@ -8,8 +8,9 @@
 #      points health checks at /health/ready.
 #   4. Secrets (PUBMED_EMAIL, LLM_API_KEY, …) are marked `sync: false` below so
 #      you must set them once in the dashboard (Blueprint > Environment).
-#   5. Set CORS_ORIGINS to the deployed frontend origin (e.g. the Vercel URL) —
-#      it is a partial-match risk to leave it at the default below.
+#   5. Set CORS_ORIGINS to the deployed frontend origin (e.g. the Vercel URL).
+#      The API falls back to localhost:3000 until you set it — which is a
+#      partial-match risk if left unconfigured in production.
 #
 # Note: Render's FREE Postgres databases expire after 30 days. For an
 # uninterrupted judging window use a Starter plan or renew it.
@@ -37,24 +38,18 @@ services:
           name: evidenceos-db
           property: connectionString
       - key: CORS_ORIGINS
-        value: '["http://localhost:3000"]'
-        # MUST be updated in the dashboard to the deployed frontend origin.
+        # MUST be set in the dashboard to the deployed frontend origin.
         sync: false
       - key: PUBMED_EMAIL
-        value: you@example.com
         # Set a real contact email (NCBI policy) in the dashboard.
         sync: false
       - key: PUBMED_API_KEY
-        value: ""
         sync: false
       - key: LLM_PROVIDER
-        value: openai
         sync: false
       - key: LLM_API_KEY
-        value: ""
         # Optional: live evidence extraction. Without it, extraction returns
         # HTTP 503 but the seeded demo extractions are still present.
         sync: false
       - key: LLM_MODEL
-        value: gpt-4o-mini
         sync: false
