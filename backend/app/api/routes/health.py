@@ -5,15 +5,26 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.db.session import get_db
 
 router = APIRouter(tags=["health"])
 
 
 @router.get("/health")
-def health() -> dict[str, str]:
+def health() -> dict[str, object]:
     """Return service liveness status."""
-    return {"status": "ok"}
+    settings = get_settings()
+    return {
+        "status": "ok",
+        "llm": {
+            "provider": settings.llm_provider,
+            "model": settings.llm_model,
+            "base_url": settings.llm_base_url,
+            "api_key_set": bool(settings.llm_api_key),
+            "user_agent": settings.llm_user_agent,
+        },
+    }
 
 
 @router.get("/health/ready")

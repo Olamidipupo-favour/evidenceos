@@ -313,7 +313,8 @@ class OpenAICompatibleAgentClient(LLMAgentClient):
 
         if not buffer:
             raise AgentProviderError(
-                "The planner returned an empty stream (no output tokens). Try again."
+                "The planner returned an empty stream (no output tokens). Try again. "
+                f"(provider={self.model}, url={self._base_url})"
             )
 
         decision = parse_decision("".join(buffer), tool_names)
