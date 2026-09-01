@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "EvidenceOS",
-  description: "Agent-native medical research workspace.",
+  description: "Agent-native medical research workspaces.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
