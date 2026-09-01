@@ -23,6 +23,10 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
+# Runtime deps live in /app/backend/.venv (built above). Put it on PATH so
+# alembic/uvicorn/python resolve at boot without a venv activation step.
+ENV PATH="/app/backend/.venv/bin:$PATH"
+
 COPY backend/app ./app
 COPY backend/alembic.ini .
 COPY backend/alembic ./alembic
