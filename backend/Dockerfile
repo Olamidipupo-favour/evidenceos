@@ -30,8 +30,9 @@ ENV PATH="/app/backend/.venv/bin:$PATH"
 COPY backend/app ./app
 COPY backend/alembic.ini .
 COPY backend/alembic ./alembic
+COPY backend/docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
 
 EXPOSE 8000
 
-CMD ["bash", "-lc", \
-  "alembic upgrade head && python -m app.seed_demo && exec uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-8000}\" --proxy-headers --forwarded-allow-ips=\"*\""]
+CMD ["bash", "/app/backend/docker-entrypoint.sh"]
