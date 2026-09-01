@@ -261,6 +261,9 @@ class OpenAICompatibleAgentClient(LLMAgentClient):
             headers["User-Agent"] = self._user_agent
 
         buffer: list[str] = []
+        raw_head: list[str] = []
+        raw_tail: list[str] = []
+        raw_count = 0
         try:
             with self._http.stream(
                 "POST",
@@ -291,13 +294,17 @@ class OpenAICompatibleAgentClient(LLMAgentClient):
                     payload = _sse_line(line)
                     if payload is None:
                         continue
+                    raw_count += 1
+                    if raw_count <= 2:
+                        raw_head.append(payload[:180])
+                    raw_tail = [payload[:180]]
                     try:
                         event = json.loads(payload)
                     except json.JSONDecodeError:
                         continue
                     try:
                         delta = event["choices"][0]["delta"]
-                    except KeyError, IndexError, TypeError:
+                    except (KeyError, IndexError, TypeError):
                         continue
                     # Reasoning-focused providers (e.g. DeepSeek* R1-style models)
                     # stream their visible output in `reasoning_content`; the
@@ -312,9 +319,12 @@ class OpenAICompatibleAgentClient(LLMAgentClient):
             raise AgentProviderError(f"could not reach the LLM provider: {exc}") from exc
 
         if not buffer:
+            parts = raw_head + (["…"] + raw_tail if raw_count > 3 else raw_tail)
+            snippet = "; ".join(parts)
             raise AgentProviderError(
                 "The planner returned an empty stream (no output tokens). Try again. "
-                f"(provider={self.model}, url={self._base_url})"
+                f"(provider={self.model}, url={self._base_url}, events={raw_count}, "
+                f"raw={snippet[:400]})"
             )
 
         decision = parse_decision("".join(buffer), tool_names)
