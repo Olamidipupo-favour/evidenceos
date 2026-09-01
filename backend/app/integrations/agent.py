@@ -263,6 +263,7 @@ class OpenAICompatibleAgentClient(LLMAgentClient):
         buffer: list[str] = []
         raw_head: list[str] = []
         raw_tail: list[str] = []
+        raw_lines: list[str] = []
         raw_count = 0
         try:
             with self._http.stream(
@@ -291,13 +292,15 @@ class OpenAICompatibleAgentClient(LLMAgentClient):
                 for line in response.iter_lines():
                     if not line:
                         continue
+                    if raw_lines:
+                        raw_tail = [line[:200]]
+                    else:
+                        raw_head.append(line[:200])
+                        raw_lines.append(line)
                     payload = _sse_line(line)
                     if payload is None:
                         continue
                     raw_count += 1
-                    if raw_count <= 2:
-                        raw_head.append(payload[:180])
-                    raw_tail = [payload[:180]]
                     try:
                         event = json.loads(payload)
                     except json.JSONDecodeError:
@@ -319,12 +322,12 @@ class OpenAICompatibleAgentClient(LLMAgentClient):
             raise AgentProviderError(f"could not reach the LLM provider: {exc}") from exc
 
         if not buffer:
-            parts = raw_head + (["…"] + raw_tail if raw_count > 3 else raw_tail)
+            parts = (raw_head + ["…"] + raw_tail) if len(raw_lines) > 3 else raw_lines
             snippet = "; ".join(parts)
             raise AgentProviderError(
                 "The planner returned an empty stream (no output tokens). Try again. "
-                f"(provider={self.model}, url={self._base_url}, events={raw_count}, "
-                f"raw={snippet[:400]})"
+                f"(provider={self.model}, url={self._base_url}, data_events={raw_count}, "
+                f"raw_lines={snippet[:400]})"
             )
 
         decision = parse_decision("".join(buffer), tool_names)
