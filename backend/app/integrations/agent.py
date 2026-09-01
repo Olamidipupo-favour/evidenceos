@@ -265,6 +265,7 @@ class OpenAICompatibleAgentClient(LLMAgentClient):
         raw_tail: list[str] = []
         raw_lines: list[str] = []
         raw_count = 0
+        resp_meta = ""
         try:
             with self._http.stream(
                 "POST",
@@ -272,6 +273,16 @@ class OpenAICompatibleAgentClient(LLMAgentClient):
                 headers=headers,
                 json=payload,
             ) as response:
+                resp_headers = getattr(response, "headers", None)
+                if resp_headers is not None:
+                    for key in (
+                        "server", "via", "cf-ray", "cf-cache-status",
+                        "x-powered-by", "alt-svc",
+                    ):
+                        value = resp_headers.get(key)
+                        if value:
+                            resp_meta += f" {key}={value}"
+                    resp_meta = resp_meta.strip()
                 if response.status_code == 401:
                     raise AgentProviderError(
                         "LLM provider rejected the API key (check LLM_API_KEY)"
@@ -327,7 +338,7 @@ class OpenAICompatibleAgentClient(LLMAgentClient):
             raise AgentProviderError(
                 "The planner returned an empty stream (no output tokens). Try again. "
                 f"(provider={self.model}, url={self._base_url}, data_events={raw_count}, "
-                f"raw_lines={snippet[:6000]})"
+                f"headers={resp_meta or 'none'}, raw_lines={snippet[:6000]})"
             )
 
         decision = parse_decision("".join(buffer), tool_names)
