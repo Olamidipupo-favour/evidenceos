@@ -12,8 +12,11 @@
 #      The API falls back to localhost:3000 until you set it — which is a
 #      partial-match risk if left unconfigured in production.
 #
-# Note: Render's FREE Postgres databases expire after 30 days. For an
-# uninterrupted judging window use a Starter plan or renew it.
+# Pricing: both services use FREE plans so no card is needed to deploy.
+# Caveats of free plans: the web service spins down after ~15 min of
+# inactivity (first request may take 30-60s to cold start) and the free
+# Postgres DB expires after 30 days — renew or upgrade before the judging
+# window.
 databases:
   - name: evidenceos-db
     plan: free
@@ -23,7 +26,7 @@ services:
   - type: web
     name: evidenceos-api
     runtime: docker
-    plan: starter
+    plan: free
     dockerfilePath: backend/Dockerfile
     # Docker build context defaults to the repo root, so frontend/ and webmcp/
     # are ignored via .dockerignore for fast image builds.
